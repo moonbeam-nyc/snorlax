@@ -3,8 +3,14 @@ all: dev
 build:
 	go build -o snorlax
 
-run: build
+help: build
 	./snorlax
+
+serve: build
+	./snorlax serve
+
+watch: build
+	./snorlax watch
 
 dev:
 	air
