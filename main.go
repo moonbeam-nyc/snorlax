@@ -1,7 +1,9 @@
 package main
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -10,8 +12,6 @@ import (
 	cc "github.com/ivanpirog/coloredcobra"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -28,6 +28,9 @@ type Config struct {
 
 var config Config
 
+//go:embed static/*
+var staticFiles embed.FS
+
 var rootCmd = &cobra.Command{
 	Use:   "snorlax",
 	Short: "A service to that sleeps and wakes your Kubernetes deployments (by schedule and requests).",
@@ -40,24 +43,36 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Run the wake HTTP server",
 	Run: func(cmd *cobra.Command, args []string) {
-		var k8sClient = createK8sClient()
+		// var k8sClient = createK8sClient()
+
+		// Create a new sub-filesystem from the `static` directory within the embedded filesystem
+		subFS, err := fs.Sub(staticFiles, "static")
+		if err != nil {
+			log.Fatal(err)
+		}
 
 		// Define the HTTP handler function
+		fileServer := http.FileServer(http.FS(subFS))
+
+		http.Handle("/waking-up/", http.StripPrefix("/waking-up/", fileServer))
+
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			// Scale the deployment
-			scale := fmt.Sprintf(`{"spec":{"replicas":%d}}`, config.ReplicaCount)
-			_, err := k8sClient.AppsV1().Deployments(config.Namespace).Patch(r.Context(), config.DeploymentName, types.StrategicMergePatchType, []byte(scale), metav1.PatchOptions{})
-			if err != nil {
-				log.Printf("Failed to scale deployment: %v", err)
-				http.Error(w, "Failed to scale deployment", http.StatusInternalServerError)
-				return
-			}
+			// scale := fmt.Sprintf(`{"spec":{"replicas":%d}}`, config.ReplicaCount)
+			// _, err := k8sClient.AppsV1().Deployments(config.Namespace).Patch(r.Context(), config.DeploymentName, types.StrategicMergePatchType, []byte(scale), metav1.PatchOptions{})
+			// if err != nil {
+			// 	log.Printf("Failed to scale deployment: %v", err)
+			// 	http.Error(w, "Failed to scale deployment", http.StatusInternalServerError)
+			// 	return
+			// }
+
+			http.Redirect(w, r, "/waking-up", http.StatusTemporaryRedirect)
 
 			fmt.Fprintf(w, "Deployment scaled successfully to %d replicas", config.ReplicaCount)
 		})
 
 		// Start the web server
-		log.Println("Starting server on port 8080...")
+		log.Println("Starting server on http://localhost:8080...")
 		log.Fatal(http.ListenAndServe(":8080", nil))
 	},
 }

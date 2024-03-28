@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Waking up...</title>
+<style>
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    font-family: Arial, sans-serif;
+  }
+
+  img {
+    max-width: 50%;
+    height: auto;
+  }
+
+  p {
+    margin-top: 20px;
+    font-size: 20px;
+    color: #333;
+  }
+</style>
+</head>
+<body>
+<img src="/waking-up/sleeping-snorlax.gif" alt="Snorlax">
+<p>Oh hey, waking this service, please wait<span id="loading-dots">...</span></p>
+
+<script>
+  setInterval(function() {
+    var dots = document.getElementById("loading-dots");
+    dots.textContent = dots.textContent.length < 3 ? dots.textContent + "." : ".";
+  }, 1000);
+</script>
+</body>
+</html>
