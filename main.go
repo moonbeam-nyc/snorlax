@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -31,15 +30,15 @@ var config Config
 
 var rootCmd = &cobra.Command{
 	Use:   "snorlax",
-	Short: "a service to that sleeps and wakes your containers",
+	Short: "A service to that sleeps and wakes your Kubernetes deployments (by schedule and requests).",
 	Run: func(cmd *cobra.Command, args []string) {
-		// cmd.Help()
+		cmd.Help()
 	},
 }
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Run the HTTP server",
+	Short: "Run the wake HTTP server",
 	Run: func(cmd *cobra.Command, args []string) {
 		var k8sClient = createK8sClient()
 
@@ -65,32 +64,58 @@ var serveCmd = &cobra.Command{
 
 var watchCmd = &cobra.Command{
 	Use:   "watch",
-	Short: "Print 'hello world'",
+	Short: "Watch the time, and wake or sleep the deployment when it's time",
 	Run: func(cmd *cobra.Command, args []string) {
-		var k8sClient = createK8sClient()
+		// k8sClient := createK8sClient()
+		awake := true
 
 		// Start the watch loop
 		for {
 			now := time.Now()
 
-			if now.After(config.WakeTime) && now.Before(config.SleepTime) {
-				// Scale up the deployment
-				scale := fmt.Sprintf(`{"spec":{"replicas":%d}}`, config.ReplicaCount)
-				_, err := k8sClient.AppsV1().Deployments(config.Namespace).Patch(context.Background(), config.DeploymentName, types.StrategicMergePatchType, []byte(scale), metav1.PatchOptions{})
-				if err != nil {
-					log.Printf("Failed to scale up deployment: %v", err)
-				}
+			// Setup temp wake and sleep times with the same date as now
+			wakeTime := time.Date(now.Year(), now.Month(), now.Day(), config.WakeTime.Hour(), config.WakeTime.Minute(), 0, 0, time.Local)
+			sleepTime := time.Date(now.Year(), now.Month(), now.Day(), config.SleepTime.Hour(), config.SleepTime.Minute(), 0, 0, time.Local)
+
+			var shouldSleep bool
+			if wakeTime.Before(sleepTime) {
+				shouldSleep = now.Before(wakeTime) || now.After(sleepTime)
 			} else {
-				// Scale down the deployment
-				scale := `{"spec":{"replicas":0}}`
-				_, err := k8sClient.AppsV1().Deployments(config.Namespace).Patch(context.Background(), config.DeploymentName, types.StrategicMergePatchType, []byte(scale), metav1.PatchOptions{})
-				if err != nil {
-					log.Printf("Failed to scale down deployment: %v", err)
-				}
+				shouldSleep = now.Before(sleepTime) || now.After(wakeTime)
 			}
 
-			// Sleep for 1 minute before checking again
-			time.Sleep(1 * time.Minute)
+			fmt.Println()
+			fmt.Println("now", now)
+			fmt.Println("wake", wakeTime)
+			fmt.Println("sleep", sleepTime)
+			fmt.Println("awake", awake)
+			fmt.Println("should sleep", shouldSleep)
+
+			// Replace the date part of the WakeTime and SleepTime with the current date
+			if awake && shouldSleep {
+				fmt.Printf("\nGoing to sleep 💤\n")
+				awake = false
+
+				// Scale up the deployment
+				// scale := fmt.Sprintf(`{"spec":{"replicas":%d}}`, config.ReplicaCount)
+				// _, err := k8sClient.AppsV1().Deployments(config.Namespace).Patch(context.Background(), config.DeploymentName, types.StrategicMergePatchType, []byte(scale), metav1.PatchOptions{})
+				// if err != nil {
+				// 	log.Printf("Failed to scale up deployment: %v", err)
+				// }
+			} else if !awake && !shouldSleep {
+				fmt.Printf("\nWaking up ☀️\n")
+				awake = true
+
+				// Scale down the deployment
+				// scale := `{"spec":{"replicas":0}}`
+				// _, err := k8sClient.AppsV1().Deployments(config.Namespace).Patch(context.Background(), config.DeploymentName, types.StrategicMergePatchType, []byte(scale), metav1.PatchOptions{})
+				// if err != nil {
+				// 	log.Printf("Failed to scale down deployment: %v", err)
+				// }
+			}
+
+			// Sleep for 10 seconds before checking again
+			time.Sleep(10 * time.Second)
 		}
 	},
 }
@@ -128,14 +153,30 @@ func loadConfig() {
 	viper.BindEnv("KUBECONFIG")
 	viper.BindEnv("NAMESPACE")
 	viper.BindEnv("REPLICA_COUNT")
-	viper.BindEnv("SLEEP_TIME")
-	viper.BindEnv("WAKE_TIME")
+
 	if err := viper.Unmarshal(&config); err != nil {
 		fmt.Printf("Error unmarshaling config: %s\n", err)
 		return
 	}
 
-	// fmt.Printf("%+v\n", cliConfig)
+	// Load wake and sleep times
+	sleepTimeStr := os.Getenv("SLEEP_TIME")
+	wakeTimeStr := os.Getenv("WAKE_TIME")
+
+	sleepTime, err := time.Parse("15:04", sleepTimeStr)
+	if err != nil {
+		log.Fatalf("Failed to parse sleep time: %v", err)
+	}
+
+	wakeTime, err := time.Parse("15:04", wakeTimeStr)
+	if err != nil {
+		log.Fatalf("Failed to parse wake time: %v", err)
+	}
+
+	config.SleepTime = sleepTime
+	config.WakeTime = wakeTime
+
+	// fmt.Printf("%+v\n", config)
 }
 
 func runCli() {
