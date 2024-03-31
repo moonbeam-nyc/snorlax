@@ -13,6 +13,9 @@ import (
 	cc "github.com/ivanpirog/coloredcobra"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v2"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -26,6 +29,7 @@ type Config struct {
 	ReplicaCount   int       `mapstructure:"REPLICA_COUNT"`
 	SleepTime      time.Time `mapstructure:"SLEEP_TIME"`
 	WakeTime       time.Time `mapstructure:"WAKE_TIME"`
+	IngressName    string    `mapstructure:"INGRESS_NAME"`
 }
 
 var config Config
@@ -39,6 +43,22 @@ var rootCmd = &cobra.Command{
 	Short: "A service to that sleeps and wakes your Kubernetes deployments (by schedule and requests).",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
+	},
+}
+
+var wakeCmd = &cobra.Command{
+	Use:   "wake",
+	Short: "Wake up the deployment",
+	Run: func(cmd *cobra.Command, args []string) {
+		wake()
+	},
+}
+
+var sleepCmd = &cobra.Command{
+	Use:   "sleep",
+	Short: "Put the deployment to sleep",
+	Run: func(cmd *cobra.Command, args []string) {
+		sleep()
 	},
 }
 
@@ -72,7 +92,7 @@ var serveCmd = &cobra.Command{
 	},
 }
 
-func wake() {
+func scaleDeployment(replicaCount int32) {
 	k8sClient := createK8sClient()
 	scale, err := k8sClient.AppsV1().Deployments(config.Namespace).GetScale(context.TODO(), config.DeploymentName, metav1.GetOptions{})
 	if err != nil {
@@ -80,35 +100,133 @@ func wake() {
 	}
 
 	// Set the replica count to 0
-	scale.Spec.Replicas = int32(config.ReplicaCount)
+	scale.Spec.Replicas = replicaCount
 
 	// Update the scale
 	_, err = k8sClient.AppsV1().Deployments(config.Namespace).UpdateScale(context.TODO(), config.DeploymentName, scale, metav1.UpdateOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
+}
 
+func wake() {
+	scaleDeployment(int32(config.ReplicaCount))
+	loadIngressCopy()
 	awake = true
 }
 
 func sleep() {
+	scaleDeployment(0)
+	takeIngressCopy()
+	pointIngressToSnorlax()
+	awake = false
+}
+
+func pointIngressToSnorlax() {
 	k8sClient := createK8sClient()
 
-	scale, err := k8sClient.AppsV1().Deployments(config.Namespace).GetScale(context.TODO(), config.DeploymentName, metav1.GetOptions{})
+	// Get the Ingress object
+	ingress, err := k8sClient.NetworkingV1().Ingresses(config.Namespace).Get(context.TODO(), config.IngressName, metav1.GetOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
 
-	// Set the replica count to 0
-	scale.Spec.Replicas = 0
+	// Update the Ingress object
+	pathType := networkingv1.PathTypeImplementationSpecific
+	ingress.Spec.Rules = []networkingv1.IngressRule{
+		{
+			IngressRuleValue: networkingv1.IngressRuleValue{
+				HTTP: &networkingv1.HTTPIngressRuleValue{
+					Paths: []networkingv1.HTTPIngressPath{
+						{
+							Path:     "/",
+							PathType: &pathType,
+							Backend: networkingv1.IngressBackend{
+								Service: &networkingv1.IngressServiceBackend{
+									Name: "snorlax-service",
+									Port: networkingv1.ServiceBackendPort{
+										Number: 80,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 
-	// Update the scale
-	_, err = k8sClient.AppsV1().Deployments(config.Namespace).UpdateScale(context.TODO(), config.DeploymentName, scale, metav1.UpdateOptions{})
+	// Update the Ingress
+	_, err = k8sClient.NetworkingV1().Ingresses(config.Namespace).Update(context.TODO(), ingress, metav1.UpdateOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+}
+
+func takeIngressCopy() {
+	k8sClient := createK8sClient()
+
+	// Get the Ingress object
+	ingress, err := k8sClient.NetworkingV1().Ingresses(config.Namespace).Get(context.TODO(), config.IngressName, metav1.GetOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
 
-	awake = false
+	// Convert the Ingress object to YAML
+	ingressYAML, err := yaml.Marshal(ingress)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// Create the ConfigMap object
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "snorlax.ingress." + config.IngressName,
+			Namespace: config.Namespace,
+		},
+		Data: map[string]string{
+			"ingressYAML": string(ingressYAML),
+		},
+	}
+
+	// Create the ConfigMap
+	_, err = k8sClient.CoreV1().ConfigMaps(config.Namespace).Get(context.TODO(), configMap.Name, metav1.GetOptions{})
+	if err != nil {
+		_, err = k8sClient.CoreV1().ConfigMaps(config.Namespace).Create(context.TODO(), configMap, metav1.CreateOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
+	} else {
+		_, err = k8sClient.CoreV1().ConfigMaps(config.Namespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
+	}
+}
+
+func loadIngressCopy() {
+	k8sClient := createK8sClient()
+
+	// Get the ConfigMap object
+	configMap, err := k8sClient.CoreV1().ConfigMaps(config.Namespace).Get(context.TODO(), "snorlax.ingress."+config.IngressName, metav1.GetOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	ingress := &networkingv1.Ingress{}
+	err = yaml.Unmarshal([]byte(configMap.Data["ingressYAML"]), ingress)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// FIXME: panic: Operation cannot be fulfilled on ingresses.networking.k8s.io "nginx-ingress": the object has been modified; please apply your changes to the latest version and try again
+
+	// Apply the Ingress object
+	_, err = k8sClient.NetworkingV1().Ingresses(config.Namespace).Update(context.TODO(), ingress, metav1.UpdateOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+
 }
 
 var watchCmd = &cobra.Command{
@@ -130,12 +248,12 @@ var watchCmd = &cobra.Command{
 				shouldSleep = now.Before(sleepTime) || now.After(wakeTime)
 			}
 
-			fmt.Println()
-			fmt.Println("now", now)
-			fmt.Println("wake", wakeTime)
-			fmt.Println("sleep", sleepTime)
-			fmt.Println("awake", awake)
-			fmt.Println("should sleep", shouldSleep)
+			// fmt.Println()
+			// fmt.Println("now", now)
+			// fmt.Println("wake", wakeTime)
+			// fmt.Println("sleep", sleepTime)
+			// fmt.Println("awake", awake)
+			// fmt.Println("should sleep", shouldSleep)
 
 			// Replace the date part of the WakeTime and SleepTime with the current date
 			if awake && shouldSleep {
@@ -185,6 +303,7 @@ func loadConfig() {
 	viper.BindEnv("KUBECONFIG")
 	viper.BindEnv("NAMESPACE")
 	viper.BindEnv("REPLICA_COUNT")
+	viper.BindEnv("INGRESS_NAME")
 
 	if err := viper.Unmarshal(&config); err != nil {
 		fmt.Printf("Error unmarshaling config: %s\n", err)
@@ -221,7 +340,7 @@ func runCli() {
 		Flags:    cc.Bold,
 	})
 
-	rootCmd.AddCommand(serveCmd, watchCmd)
+	rootCmd.AddCommand(serveCmd, watchCmd, wakeCmd, sleepCmd)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

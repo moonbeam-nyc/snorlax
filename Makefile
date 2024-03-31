@@ -12,6 +12,12 @@ serve: build
 watch: build
 	./snorlax watch
 
+wake: build
+	./snorlax wake
+
+sleep: build
+	./snorlax sleep
+
 dev:
 	air
 
