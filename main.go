@@ -29,6 +29,7 @@ type Config struct {
 }
 
 var config Config
+var awake bool
 
 //go:embed static/*
 var staticFiles embed.FS
@@ -59,15 +60,7 @@ var serveCmd = &cobra.Command{
 		http.Handle("/waking-up/", http.StripPrefix("/waking-up/", fileServer))
 
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			// Scale the deployment
-			// scale := fmt.Sprintf(`{"spec":{"replicas":%d}}`, config.ReplicaCount)
-			// _, err := k8sClient.AppsV1().Deployments(config.Namespace).Patch(r.Context(), config.DeploymentName, types.StrategicMergePatchType, []byte(scale), metav1.PatchOptions{})
-			// if err != nil {
-			// 	log.Printf("Failed to scale deployment: %v", err)
-			// 	http.Error(w, "Failed to scale deployment", http.StatusInternalServerError)
-			// 	return
-			// }
-
+			go wake()
 			http.Redirect(w, r, "/waking-up", http.StatusTemporaryRedirect)
 
 			fmt.Fprintf(w, "Deployment scaled successfully to %d replicas", config.ReplicaCount)
@@ -79,13 +72,49 @@ var serveCmd = &cobra.Command{
 	},
 }
 
+func wake() {
+	k8sClient := createK8sClient()
+	scale, err := k8sClient.AppsV1().Deployments(config.Namespace).GetScale(context.TODO(), config.DeploymentName, metav1.GetOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// Set the replica count to 0
+	scale.Spec.Replicas = int32(config.ReplicaCount)
+
+	// Update the scale
+	_, err = k8sClient.AppsV1().Deployments(config.Namespace).UpdateScale(context.TODO(), config.DeploymentName, scale, metav1.UpdateOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	awake = true
+}
+
+func sleep() {
+	k8sClient := createK8sClient()
+
+	scale, err := k8sClient.AppsV1().Deployments(config.Namespace).GetScale(context.TODO(), config.DeploymentName, metav1.GetOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// Set the replica count to 0
+	scale.Spec.Replicas = 0
+
+	// Update the scale
+	_, err = k8sClient.AppsV1().Deployments(config.Namespace).UpdateScale(context.TODO(), config.DeploymentName, scale, metav1.UpdateOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	awake = false
+}
+
 var watchCmd = &cobra.Command{
 	Use:   "watch",
 	Short: "Watch the time, and wake or sleep the deployment when it's time",
 	Run: func(cmd *cobra.Command, args []string) {
-		k8sClient := createK8sClient()
-		awake := true
-
 		// Start the watch loop
 		for {
 			now := time.Now()
@@ -111,40 +140,10 @@ var watchCmd = &cobra.Command{
 			// Replace the date part of the WakeTime and SleepTime with the current date
 			if awake && shouldSleep {
 				fmt.Printf("\nGoing to sleep 💤\n")
-
-				scale, err := k8sClient.AppsV1().Deployments(config.Namespace).GetScale(context.TODO(), config.DeploymentName, metav1.GetOptions{})
-				if err != nil {
-					panic(err.Error())
-				}
-
-				// Set the replica count to 0
-				scale.Spec.Replicas = 0
-
-				// Update the scale
-				_, err = k8sClient.AppsV1().Deployments(config.Namespace).UpdateScale(context.TODO(), config.DeploymentName, scale, metav1.UpdateOptions{})
-				if err != nil {
-					panic(err.Error())
-				}
-
-				awake = false
+				go sleep()
 			} else if !awake && !shouldSleep {
 				fmt.Printf("\nWaking up ☀️\n")
-
-				scale, err := k8sClient.AppsV1().Deployments(config.Namespace).GetScale(context.TODO(), config.DeploymentName, metav1.GetOptions{})
-				if err != nil {
-					panic(err.Error())
-				}
-
-				// Set the replica count to 0
-				scale.Spec.Replicas = int32(config.ReplicaCount)
-
-				// Update the scale
-				_, err = k8sClient.AppsV1().Deployments(config.Namespace).UpdateScale(context.TODO(), config.DeploymentName, scale, metav1.UpdateOptions{})
-				if err != nil {
-					panic(err.Error())
-				}
-
-				awake = true
+				go wake()
 			}
 
 			// Sleep for 10 seconds before checking again
