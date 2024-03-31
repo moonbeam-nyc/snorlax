@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"io/fs"
@@ -12,6 +13,7 @@ import (
 	cc "github.com/ivanpirog/coloredcobra"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -81,7 +83,7 @@ var watchCmd = &cobra.Command{
 	Use:   "watch",
 	Short: "Watch the time, and wake or sleep the deployment when it's time",
 	Run: func(cmd *cobra.Command, args []string) {
-		// k8sClient := createK8sClient()
+		k8sClient := createK8sClient()
 		awake := true
 
 		// Start the watch loop
@@ -109,24 +111,40 @@ var watchCmd = &cobra.Command{
 			// Replace the date part of the WakeTime and SleepTime with the current date
 			if awake && shouldSleep {
 				fmt.Printf("\nGoing to sleep 💤\n")
-				awake = false
 
-				// Scale up the deployment
-				// scale := fmt.Sprintf(`{"spec":{"replicas":%d}}`, config.ReplicaCount)
-				// _, err := k8sClient.AppsV1().Deployments(config.Namespace).Patch(context.Background(), config.DeploymentName, types.StrategicMergePatchType, []byte(scale), metav1.PatchOptions{})
-				// if err != nil {
-				// 	log.Printf("Failed to scale up deployment: %v", err)
-				// }
+				scale, err := k8sClient.AppsV1().Deployments(config.Namespace).GetScale(context.TODO(), config.DeploymentName, metav1.GetOptions{})
+				if err != nil {
+					panic(err.Error())
+				}
+
+				// Set the replica count to 0
+				scale.Spec.Replicas = 0
+
+				// Update the scale
+				_, err = k8sClient.AppsV1().Deployments(config.Namespace).UpdateScale(context.TODO(), config.DeploymentName, scale, metav1.UpdateOptions{})
+				if err != nil {
+					panic(err.Error())
+				}
+
+				awake = false
 			} else if !awake && !shouldSleep {
 				fmt.Printf("\nWaking up ☀️\n")
-				awake = true
 
-				// Scale down the deployment
-				// scale := `{"spec":{"replicas":0}}`
-				// _, err := k8sClient.AppsV1().Deployments(config.Namespace).Patch(context.Background(), config.DeploymentName, types.StrategicMergePatchType, []byte(scale), metav1.PatchOptions{})
-				// if err != nil {
-				// 	log.Printf("Failed to scale down deployment: %v", err)
-				// }
+				scale, err := k8sClient.AppsV1().Deployments(config.Namespace).GetScale(context.TODO(), config.DeploymentName, metav1.GetOptions{})
+				if err != nil {
+					panic(err.Error())
+				}
+
+				// Set the replica count to 0
+				scale.Spec.Replicas = int32(config.ReplicaCount)
+
+				// Update the scale
+				_, err = k8sClient.AppsV1().Deployments(config.Namespace).UpdateScale(context.TODO(), config.DeploymentName, scale, metav1.UpdateOptions{})
+				if err != nil {
+					panic(err.Error())
+				}
+
+				awake = true
 			}
 
 			// Sleep for 10 seconds before checking again
