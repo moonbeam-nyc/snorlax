@@ -28,7 +28,7 @@
 </style>
 </head>
 <body>
-<img src="/waking-up/sleeping-snorlax.gif" alt="Snorlax">
+<img src="/sleeping-snorlax.gif" alt="Snorlax">
 <p>Oh hey, waking this service, please wait<span id="loading-dots">...</span></p>
 
 <script>
@@ -36,6 +36,23 @@
     var dots = document.getElementById("loading-dots");
     dots.textContent = dots.textContent.length < 3 ? dots.textContent + "." : ".";
   }, 1000);
+
+  setInterval(function() {
+    fetch('/still-sleeping')
+      .then(function(response) {
+        if (response.status !== 200) {
+          fetch('/').then(function(response) {
+            if (response.status === 200) {
+              location.reload();
+            }
+          });
+        }
+      })
+      .catch(function(error) {
+        console.error('Error checking if still sleeping:', error);
+      });
+  }, 3000);
+
 </script>
 </body>
 </html>

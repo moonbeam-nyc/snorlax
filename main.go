@@ -32,6 +32,11 @@ type Config struct {
 	SleepTime      time.Time `mapstructure:"SLEEP_TIME"`
 	WakeTime       time.Time `mapstructure:"WAKE_TIME"`
 	IngressName    string    `mapstructure:"INGRESS_NAME"`
+	Port           int       `mapstructure:"PORT"`
+}
+
+func init() {
+	viper.SetDefault("PORT", 8080)
 }
 
 var config Config
@@ -64,34 +69,101 @@ var sleepCmd = &cobra.Command{
 	},
 }
 
+var watchCmd = &cobra.Command{
+	Use:   "watch",
+	Short: "Watch the time, and wake or sleep the deployment when it's time",
+	Run: func(cmd *cobra.Command, args []string) {
+		watch()
+	},
+}
+
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Run the wake HTTP server",
 	Run: func(cmd *cobra.Command, args []string) {
-		// var k8sClient = createK8sClient()
+		serve()
+	},
+}
 
-		// Create a new sub-filesystem from the `static` directory within the embedded filesystem
-		subFS, err := fs.Sub(staticFiles, "static")
-		if err != nil {
-			log.Fatal(err)
+var watchServeCmd = &cobra.Command{
+	Use:   "watch-serve",
+	Short: "Watch the time and serve the wake HTTP server",
+	Run: func(cmd *cobra.Command, args []string) {
+		go watch()
+		serve()
+	},
+}
+
+func watch() {
+	// Start the watch loop
+	for {
+		now := time.Now()
+
+		// Setup temp wake and sleep times with the same date as now
+		wakeTime := time.Date(now.Year(), now.Month(), now.Day(), config.WakeTime.Hour(), config.WakeTime.Minute(), 0, 0, time.Local)
+		sleepTime := time.Date(now.Year(), now.Month(), now.Day(), config.SleepTime.Hour(), config.SleepTime.Minute(), 0, 0, time.Local)
+
+		var shouldSleep bool
+		if wakeTime.Before(sleepTime) {
+			shouldSleep = now.Before(wakeTime) || now.After(sleepTime)
+		} else {
+			shouldSleep = now.Before(sleepTime) || now.After(wakeTime)
 		}
 
-		// Define the HTTP handler function
-		fileServer := http.FileServer(http.FS(subFS))
+		// fmt.Println()
+		// fmt.Println("now", now)
+		// fmt.Println("wake", wakeTime)
+		// fmt.Println("sleep", sleepTime)
+		// fmt.Println("awake", awake)
+		// fmt.Println("should sleep", shouldSleep)
 
-		http.Handle("/waking-up/", http.StripPrefix("/waking-up/", fileServer))
-
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Replace the date part of the WakeTime and SleepTime with the current date
+		if awake && shouldSleep {
+			fmt.Printf("\nGoing to sleep 💤\n")
+			go sleep()
+		} else if !awake && !shouldSleep {
+			fmt.Printf("\nWaking up ☀️\n")
 			go wake()
-			http.Redirect(w, r, "/waking-up", http.StatusTemporaryRedirect)
+		}
 
-			fmt.Fprintf(w, "Deployment scaled successfully to %d replicas", config.ReplicaCount)
-		})
+		// Sleep for 10 seconds before checking again
+		time.Sleep(10 * time.Second)
+	}
+}
 
-		// Start the web server
-		log.Println("Starting server on http://localhost:8080...")
-		log.Fatal(http.ListenAndServe(":8080", nil))
-	},
+func serve() {
+	// var k8sClient = createK8sClient()
+
+	// Create a new sub-filesystem from the `static` directory within the embedded filesystem
+	subFS, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Define the HTTP handler function
+	fileServer := http.FileServer(http.FS(subFS))
+
+	// http.Handle("/waking-up/", http.StripPrefix("/waking-up/", fileServer))
+
+	http.HandleFunc("/still-sleeping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "OK")
+	})
+
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "OK")
+	})
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		go wake()
+		fileServer.ServeHTTP(w, r)
+		fmt.Fprintf(w, "Deployment scaled successfully to %d replicas", config.ReplicaCount)
+	})
+
+	// Start the web server
+	log.Println("Starting server on http://localhost:", config.Port, "...")
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), nil))
 }
 
 func scaleDeployment(replicaCount int32) {
@@ -118,9 +190,9 @@ func wake() {
 }
 
 func sleep() {
-	scaleDeployment(0)
 	takeIngressCopy()
 	pointIngressToSnorlax()
+	scaleDeployment(0)
 	awake = false
 }
 
@@ -145,10 +217,8 @@ func pointIngressToSnorlax() {
 							PathType: &pathType,
 							Backend: networkingv1.IngressBackend{
 								Service: &networkingv1.IngressServiceBackend{
-									Name: "snorlax-service",
-									Port: networkingv1.ServiceBackendPort{
-										Number: 80,
-									},
+									Name: "snorlax-nginx",
+									Port: networkingv1.ServiceBackendPort{Number: 80},
 								},
 							},
 						},
@@ -237,47 +307,6 @@ func loadIngressCopy() {
 	}
 }
 
-var watchCmd = &cobra.Command{
-	Use:   "watch",
-	Short: "Watch the time, and wake or sleep the deployment when it's time",
-	Run: func(cmd *cobra.Command, args []string) {
-		// Start the watch loop
-		for {
-			now := time.Now()
-
-			// Setup temp wake and sleep times with the same date as now
-			wakeTime := time.Date(now.Year(), now.Month(), now.Day(), config.WakeTime.Hour(), config.WakeTime.Minute(), 0, 0, time.Local)
-			sleepTime := time.Date(now.Year(), now.Month(), now.Day(), config.SleepTime.Hour(), config.SleepTime.Minute(), 0, 0, time.Local)
-
-			var shouldSleep bool
-			if wakeTime.Before(sleepTime) {
-				shouldSleep = now.Before(wakeTime) || now.After(sleepTime)
-			} else {
-				shouldSleep = now.Before(sleepTime) || now.After(wakeTime)
-			}
-
-			// fmt.Println()
-			// fmt.Println("now", now)
-			// fmt.Println("wake", wakeTime)
-			// fmt.Println("sleep", sleepTime)
-			// fmt.Println("awake", awake)
-			// fmt.Println("should sleep", shouldSleep)
-
-			// Replace the date part of the WakeTime and SleepTime with the current date
-			if awake && shouldSleep {
-				fmt.Printf("\nGoing to sleep 💤\n")
-				go sleep()
-			} else if !awake && !shouldSleep {
-				fmt.Printf("\nWaking up ☀️\n")
-				go wake()
-			}
-
-			// Sleep for 10 seconds before checking again
-			time.Sleep(10 * time.Second)
-		}
-	},
-}
-
 func createK8sClient() *kubernetes.Clientset {
 	// Setup config
 	var k8sConfig *rest.Config
@@ -335,7 +364,7 @@ func loadConfig() {
 	config.SleepTime = sleepTime
 	config.WakeTime = wakeTime
 
-	// fmt.Printf("%+v\n", config)
+	fmt.Printf("%+v\n", config)
 }
 
 func runCli() {
@@ -348,7 +377,7 @@ func runCli() {
 		Flags:    cc.Bold,
 	})
 
-	rootCmd.AddCommand(serveCmd, watchCmd, wakeCmd, sleepCmd)
+	rootCmd.AddCommand(serveCmd, watchCmd, watchServeCmd, wakeCmd, sleepCmd)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

@@ -1,26 +1,29 @@
-# Start from the latest golang base image
+#### FIRST STAGE ####
 FROM golang:latest
 
-# Add Maintainer Info
-LABEL maintainer="Your Name <your.email@example.com>"
-
-# Set the Current Working Directory inside the container
+# Set the directory
 WORKDIR /app
 
-# Copy go mod and sum files
+# Install dependencies
 COPY go.mod go.sum ./
-
-# Download all dependencies. Dependencies will be cached if the go.mod and go.sum files are not changed
 RUN go mod download
 
-# Copy the source from the current directory to the Working Directory inside the container
-COPY . .
+# Copy the source
+COPY main.go /app/
+COPY static /app/static
 
-# Build the Go app
-RUN go build -o snorlax .
+# Build
+RUN CGO_ENABLED=0 go build -o snorlax .
 
-# Expose port 8080 to the outside world
-EXPOSE 8080
 
-# Command to run the executable
-CMD ["./snorlax"]
+#### SECOND STAGE ####
+FROM alpine:latest
+
+# Set the directory
+WORKDIR /app
+
+# Copy the binary from the previous stage
+COPY --from=0 /app/snorlax .
+
+# Set the default command
+CMD ["./snorlax", "watch-serve"]
