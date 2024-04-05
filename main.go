@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
@@ -17,6 +18,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -213,20 +215,26 @@ func loadIngressCopy() {
 		panic(err.Error())
 	}
 
-	ingress := &networkingv1.Ingress{}
-	err = yaml.Unmarshal([]byte(configMap.Data["ingressYAML"]), ingress)
+	// Unmarshal the YAML from the ConfigMap into an Ingress object
+	var ingress networkingv1.Ingress
+	if err := yaml.Unmarshal([]byte(configMap.Data["ingressYAML"]), &ingress); err != nil {
+		panic(err.Error())
+	}
+
+	// Marshal the IngressSpec into JSON
+	ingressSpec, err := json.Marshal(ingress.Spec)
 	if err != nil {
 		panic(err.Error())
 	}
 
-	// FIXME: panic: Operation cannot be fulfilled on ingresses.networking.k8s.io "nginx-ingress": the object has been modified; please apply your changes to the latest version and try again
+	// Wrap the json in a 'spec' key
+	ingressSpec = []byte(fmt.Sprintf(`{"spec": %s}`, string(ingressSpec)))
 
-	// Apply the Ingress object
-	_, err = k8sClient.NetworkingV1().Ingresses(config.Namespace).Update(context.TODO(), ingress, metav1.UpdateOptions{})
+	// Patch the existing Ingress with the new spec
+	_, err = k8sClient.NetworkingV1().Ingresses(config.Namespace).Patch(context.TODO(), config.IngressName, types.MergePatchType, ingressSpec, metav1.PatchOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
-
 }
 
 var watchCmd = &cobra.Command{
