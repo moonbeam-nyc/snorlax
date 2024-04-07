@@ -16,7 +16,7 @@ Snorlax is packaged as a Helm chart. So create a Helm values file like so:
 
 deployment:
   env:
-    # required
+    # Required
     - name: REPLICA_COUNT
       value: "1"
     - name: NAMESPACE
@@ -28,9 +28,9 @@ deployment:
     - name: SLEEP_TIME
       value: "18:00"
 
-    # optional
-    - name: INGRESS_NAME
-      value: "some-backend-ingress"
+    # Optional
+    # - name: INGRESS_NAME
+    #   value: "some-backend-ingress"
 ```
 
 Then deploy it like so:
