@@ -1,13 +1,20 @@
+<div align="center">
+  <img src="./static/logo-small.png" alt="Logo" width="300">
+</div>
+
 # Snorlax
 
 Snorlax is a Kubernetes service which wakes and sleeps another Kubernetes deployment on a schedule.
 
 And if a request is received when the deployment is sleeping, a cute sleeping Snorlax page is
-served and the Kubernetes deployment is woken up.
+served and the Kubernetes deployment is woken up. (Once the service is ready, the page will auto-refresh.)
+
+
 
 ## See it in action
 
-![Snorlax Demo](./static/snorlax-demo.gif)
+![Snorlax Demo](./static/demo.gif)
+
 
 ## How to deploy to your cluster
 
