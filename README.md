@@ -5,8 +5,6 @@ Snorlax is a Kubernetes service which wakes and sleeps another Kubernetes deploy
 And if a request is received when the deployment is sleeping, a cute sleeping Snorlax page is
 served and the Kubernetes deployment is woken up.
 
-![Snorlax Banner](./static/snorlax-banner.webp)
-
 ## See it in action
 
 ![Snorlax Demo](./static/snorlax-demo.gif)
