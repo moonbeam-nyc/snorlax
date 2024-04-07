@@ -1,6 +1,6 @@
 # Snorlax
 
-Snorlax is a Kubernetes service which wakes and sleeps another Kubernetes on a schedule.
+Snorlax is a Kubernetes service which wakes and sleeps another Kubernetes deployment on a schedule.
 
 And if a request is received when the deployment is sleeping, a cute sleeping Snorlax page is
 served and the Kubernetes deployment is woken up.
@@ -54,3 +54,12 @@ export INGRESS_NAME=some-backend-ingress
 
 make build watch-serve
 ```
+
+## Future work
+
+- Turn this into a Kubernetes operator with a SleepSchedule CRD
+- Scale entire namespaces
+- Sleep when no requests are received for a certain period of time
+- Add support for custom wake-up and sleep actions
+- Add support for cron-style schedules (e.g., `0 8 * * *`)
+- Add button to manually wake up the deployment (instead of auto-waking on request)
