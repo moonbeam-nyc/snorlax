@@ -7,6 +7,10 @@ served and the Kubernetes deployment is woken up.
 
 ![Snorlax Banner](./static/snorlax-banner.webp)
 
+## See it in action
+
+![Snorlax Demo](./static/snorlax-demo.gif)
+
 ## How to deploy to your cluster
 
 Snorlax is packaged as a Helm chart. So create a Helm values file like so:
