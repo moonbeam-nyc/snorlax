@@ -52,7 +52,7 @@ export WAKE_TIME=8:00
 export SLEEP_TIME=18:00
 export INGRESS_NAME=some-backend-ingress
 
-make build watch-serve
+make watch-serve
 ```
 
 ## Future work
