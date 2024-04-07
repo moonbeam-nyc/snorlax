@@ -1,16 +1,14 @@
-all: dev
-
 build:
 	go build -o snorlax
+
+
+## Local commands
 
 help: build
 	./snorlax
 
-serve: build
-	./snorlax serve
-
-watch: build
-	./snorlax watch
+watch-serve: build
+	./snorlax watch-serve
 
 wake: build
 	./snorlax wake
@@ -18,17 +16,20 @@ wake: build
 sleep: build
 	./snorlax sleep
 
-dev:
-	air
-
 clean:
 	rm -f snorlax
+
+
+## Docker commands
 
 docker-build:
 	docker build -t snorlax .
 
-docker-run: docker-build
-	docker run -p 8080:8080 snorlax
+docker-watch-serve: docker-build
+	docker run -p 8080:8080 snorlax watch-serve
+
+
+## Minikube commands
 
 minikube-push: docker-build
 	docker save snorlax | (eval $$(minikube docker-env) && docker load)
