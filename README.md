@@ -16,25 +16,27 @@ Snorlax is packaged as a Helm chart. So create a Helm values file like so:
 
 deployment:
   env:
+    # required
     - name: REPLICA_COUNT
       value: "1"
     - name: NAMESPACE
-      value: "default"
+      value: "important-namespace"
     - name: DEPLOYMENT_NAME
-      value: "acme-service"
+      value: "some-backend-deployment"
     - name: WAKE_TIME
       value: "8:00"
     - name: SLEEP_TIME
       value: "18:00"
-    - name: INGRESS_NAME
-      value: "nginx-ingress"
 
+    # optional
+    - name: INGRESS_NAME
+      value: "some-backend-ingress"
 ```
 
 Then deploy it like so:
 
 ```bash
-helm install snorlax ./snorlax --values values.yaml
+helm install snorlax ./snorlax --values values.yaml --namespace important-namespace --create-namespace
 ```
 
 
@@ -43,5 +45,12 @@ helm install snorlax ./snorlax --values values.yaml
 If you have Go installed, you can build and run the program in full using:
 
 ```bash
+export REPLICA_COUNT=1
+export NAMESPACE=important-namespace
+export DEPLOYMENT_NAME=some-backend-deployment
+export WAKE_TIME=8:00
+export SLEEP_TIME=18:00
+export INGRESS_NAME=some-backend-ingress
+
 make build watch-serve
 ```
