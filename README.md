@@ -47,8 +47,7 @@ Then deploy it like so:
 ```bash
 helm install snorlax ./snorlax \
   --values values.yaml \
-  --namespace important-namespace \
-  --create-namespace
+  --namespace important-namespace
 ```
 
 
