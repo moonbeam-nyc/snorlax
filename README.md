@@ -10,7 +10,6 @@ And if a request is received when the deployment is sleeping, a cute sleeping Sn
 served and the Kubernetes deployment is woken up. (Once the service is ready, the page will auto-refresh.)
 
 
-
 ## See it in action
 
 ![Snorlax Demo](./static/demo.gif)
@@ -71,6 +70,6 @@ make watch-serve
 - Turn this into a Kubernetes operator with a SleepSchedule CRD
 - Scale entire namespaces
 - Sleep when no requests are received for a certain period of time
-- Add support for custom wake-up and sleep actions
-- Add support for cron-style schedules (e.g., `0 8 * * *`)
+- Add support for custom wake and sleep actions (e.g. hit a webhook on wake)
+- Add support for cron-style schedules (e.g. `0 8 * * *`)
 - Add button to manually wake up the deployment (instead of auto-waking on request)
