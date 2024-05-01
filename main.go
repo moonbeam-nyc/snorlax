@@ -143,8 +143,6 @@ func serve() {
 	// Define the HTTP handler function
 	fileServer := http.FileServer(http.FS(subFS))
 
-	// http.Handle("/waking-up/", http.StripPrefix("/waking-up/", fileServer))
-
 	http.HandleFunc("/still-sleeping", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "OK")
@@ -158,11 +156,10 @@ func serve() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		go wake()
 		fileServer.ServeHTTP(w, r)
-		fmt.Fprintf(w, "Deployment scaled successfully to %d replicas", config.ReplicaCount)
 	})
 
 	// Start the web server
-	log.Println("Starting server on http://localhost:", config.Port, "...")
+	log.Printf("Starting server on http://localhost:%d...\n", config.Port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), nil))
 }
 
@@ -183,8 +180,13 @@ func scaleDeployment(replicaCount int32) {
 	}
 }
 
+func waitForDeploymentToWake() {
+	// TODO: Wait for the deployment to be ready (in the k8s sense)
+}
+
 func wake() {
 	scaleDeployment(int32(config.ReplicaCount))
+	waitForDeploymentToWake()
 	loadIngressCopy()
 	awake = true
 }
@@ -364,7 +366,7 @@ func loadConfig() {
 	config.SleepTime = sleepTime
 	config.WakeTime = wakeTime
 
-	fmt.Printf("%+v\n", config)
+	//fmt.Printf("%+v\n", config)
 }
 
 func runCli() {
