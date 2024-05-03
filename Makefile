@@ -31,6 +31,8 @@ docker-watch-serve: docker-build
 
 ## Minikube commands
 
+minikube: minikube-push minikube-install
+
 minikube-push: docker-build
 	docker save snorlax | (eval $$(minikube docker-env) && docker load)
 

@@ -180,8 +180,21 @@ func scaleDeployment(replicaCount int32) {
 	}
 }
 
+// Wait for the deployment to be ready for traffic (in the k8s sense)
 func waitForDeploymentToWake() {
-	// TODO: Wait for the deployment to be ready (in the k8s sense)
+	k8sClient := createK8sClient()
+	for {
+		deployment, err := k8sClient.AppsV1().Deployments(config.Namespace).Get(context.TODO(), config.DeploymentName, metav1.GetOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
+
+		if deployment.Status.ReadyReplicas == int32(config.ReplicaCount) {
+			break
+		}
+
+		time.Sleep(2 * time.Second)
+	}
 }
 
 func wake() {
