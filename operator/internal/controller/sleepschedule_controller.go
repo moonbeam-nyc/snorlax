@@ -18,8 +18,18 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"gopkg.in/yaml.v2"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -37,24 +47,205 @@ type SleepScheduleReconciler struct {
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the SleepSchedule object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	// Fetch the SleepSchedule instance
+	sleepSchedule := &snorlaxv1beta1.SleepSchedule{}
+	err := r.Get(ctx, req.NamespacedName, sleepSchedule)
+	if err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 
-	return ctrl.Result{}, nil
+	now := time.Now()
+	wakeTime := time.Date(now.Year(), now.Month(), now.Day(), sleepSchedule.Spec.WakeTime.Hour(), sleepSchedule.Spec.WakeTime.Minute(), 0, 0, now.Location())
+	sleepTime := time.Date(now.Year(), now.Month(), now.Day(), sleepSchedule.Spec.SleepTime.Hour(), sleepSchedule.Spec.SleepTime.Minute(), 0, 0, now.Location())
+
+	var shouldSleep bool
+	if wakeTime.Before(sleepTime) {
+		shouldSleep = now.Before(wakeTime) || now.After(sleepTime)
+	} else {
+		shouldSleep = now.Before(sleepTime) || now.After(wakeTime)
+	}
+
+	awake, err := r.isAppAwake(ctx, sleepSchedule)
+	if err != nil {
+		log.Error(err, "Failed to determine if the application is awake")
+		return ctrl.Result{}, err
+	}
+
+	if awake && shouldSleep {
+		log.Info("Going to sleep")
+		r.sleep(ctx, sleepSchedule)
+	} else if !awake && !shouldSleep {
+		log.Info("Waking up")
+		r.wake(ctx, sleepSchedule)
+	}
+
+	// Update status based on the actual check
+	sleepSchedule.Status.Awake = awake
+	err = r.Status().Update(ctx, sleepSchedule)
+	if err != nil {
+		log.Error(err, "Failed to update SleepSchedule status")
+		return ctrl.Result{}, err
+	}
+
+	// Requeue to check again in 10 seconds
+	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
+func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) (bool, error) {
+	deployment := &appsv1.Deployment{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: sleepSchedule.Spec.DeploymentName}, deployment)
+	if err != nil {
+		return false, err
+	}
+
+	// Consider "awake" if at least one replica is available
+	return deployment.Status.AvailableReplicas > 0, nil
+}
+
+func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
+	r.scaleDeployment(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.DeploymentName, int32(sleepSchedule.Spec.ReplicaCount))
+
+	if sleepSchedule.Spec.IngressName != "" {
+		r.waitForDeploymentToWake(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.DeploymentName)
+		r.loadIngressCopy(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.IngressName)
+	}
+}
+
+func (r *SleepScheduleReconciler) sleep(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
+	if sleepSchedule.Spec.IngressName != "" {
+		r.takeIngressCopy(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.IngressName)
+		r.pointIngressToSnorlax(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.IngressName)
+	}
+
+	r.scaleDeployment(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.DeploymentName, 0)
+}
+
+func (r *SleepScheduleReconciler) scaleDeployment(ctx context.Context, namespace, deploymentName string, replicaCount int32) {
+	deployment := &appsv1.Deployment{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: deploymentName}, deployment)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get Deployment")
+		return
+	}
+	deployment.Spec.Replicas = &replicaCount
+	err = r.Update(ctx, deployment)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to update Deployment replicas")
+	}
+}
+
+func (r *SleepScheduleReconciler) waitForDeploymentToWake(ctx context.Context, namespace, deploymentName string) {
+	for {
+		deployment := &appsv1.Deployment{}
+		err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: deploymentName}, deployment)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Failed to get Deployment")
+			return
+		}
+
+		if deployment.Status.ReadyReplicas == *deployment.Spec.Replicas {
+			break
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, namespace, ingressName string) {
+	ingress := &networkingv1.Ingress{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ingressName}, ingress)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get Ingress for copy")
+		return
+	}
+	ingressYAML, err := yaml.Marshal(ingress)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to marshal Ingress YAML")
+		return
+	}
+
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "snorlax.ingress." + ingressName,
+			Namespace: namespace,
+		},
+		Data: map[string]string{
+			"ingressYAML": string(ingressYAML),
+		},
+	}
+
+	if err := r.Create(ctx, configMap); err != nil {
+		if err := r.Update(ctx, configMap); err != nil {
+			log.FromContext(ctx).Error(err, "Failed to create or update ConfigMap")
+		}
+	}
+}
+
+func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, namespace, ingressName string) {
+	ingress := &networkingv1.Ingress{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ingressName}, ingress)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get Ingress for update")
+		return
+	}
+	pathType := networkingv1.PathTypeImplementationSpecific
+	ingress.Spec.Rules = []networkingv1.IngressRule{
+		{
+			IngressRuleValue: networkingv1.IngressRuleValue{
+				HTTP: &networkingv1.HTTPIngressRuleValue{
+					Paths: []networkingv1.HTTPIngressPath{
+						{
+							Path:     "/",
+							PathType: &pathType,
+							Backend: networkingv1.IngressBackend{
+								Service: &networkingv1.IngressServiceBackend{
+									Name: "snorlax-nginx",
+									Port: networkingv1.ServiceBackendPort{Number: 80},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err = r.Update(ctx, ingress)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to update Ingress to point to Snorlax")
+	}
+}
+
+func (r *SleepScheduleReconciler) loadIngressCopy(ctx context.Context, namespace, ingressName string) {
+	configMap := &corev1.ConfigMap{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: "snorlax.ingress." + ingressName}, configMap)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get ConfigMap")
+		return
+	}
+
+	ingress := &networkingv1.Ingress{}
+	err = yaml.Unmarshal([]byte(configMap.Data["ingressYAML"]), ingress)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to unmarshal Ingress YAML")
+		return
+	}
+
+	ingressSpecJSON, err := json.Marshal(ingress.Spec)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to marshal Ingress spec into JSON")
+		return
+	}
+
+	err = r.Patch(ctx, ingress, client.RawPatch(types.MergePatchType, []byte(fmt.Sprintf(`{"spec": %s}`, ingressSpecJSON))))
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to patch Ingress with original spec")
+	}
+}
+
 func (r *SleepScheduleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&snorlaxv1beta1.SleepSchedule{}).
