@@ -1,0 +1,20 @@
+apiVersion: snorlax.moon-society.io/v1beta1
+kind: SleepSchedule
+metadata:
+  labels:
+    app.kubernetes.io/name: sleepschedule
+    app.kubernetes.io/instance: sleepschedule-sample
+    app.kubernetes.io/part-of: operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: operator
+  name: sleepschedule-sample
+spec:
+  namespace: some-ns
+  deploymentName: some-deployment
+  replicaCount: 3
+
+  sleepTime:
+  wakeTime:
+
+  ingressName:
+  port:
