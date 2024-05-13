@@ -152,7 +152,10 @@ func (r *SleepScheduleReconciler) scaleDeployment(ctx context.Context, namespace
 }
 
 func (r *SleepScheduleReconciler) waitForDeploymentToWake(ctx context.Context, namespace, deploymentName string) {
+	logger := log.FromContext(ctx)
+
 	for {
+		logger.Info("Waiting for deployment to wake")
 		deployment := &appsv1.Deployment{}
 		err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: deploymentName}, deployment)
 		if err != nil {
@@ -161,6 +164,7 @@ func (r *SleepScheduleReconciler) waitForDeploymentToWake(ctx context.Context, n
 		}
 
 		if deployment.Status.ReadyReplicas == *deployment.Spec.Replicas {
+			logger.Info("Deployment replicas are ready")
 			break
 		}
 
