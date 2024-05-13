@@ -18,23 +18,21 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	snorlaxv1beta1 "moon-society/snorlax/api/v1beta1"
 	"time"
-
-	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	snorlaxv1beta1 "moon-society/snorlax/api/v1beta1"
 )
 
 // SleepScheduleReconciler reconciles a SleepSchedule object
@@ -79,7 +77,7 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if wakeDatetime.Before(sleepDatetime) {
 		shouldSleep = now.Before(wakeDatetime) || now.After(sleepDatetime)
 	} else {
-		shouldSleep = now.Before(sleepDatetime) || now.After(wakeDatetime)
+		shouldSleep = now.After(sleepDatetime) && now.Before(wakeDatetime)
 	}
 
 	awake, err := r.isAppAwake(ctx, sleepSchedule)
@@ -119,19 +117,25 @@ func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule 
 	return deployment.Status.Replicas > 0, nil
 }
 
-func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
+func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
 	r.scaleDeployment(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.DeploymentName, int32(sleepSchedule.Spec.ReplicaCount))
 
 	if sleepSchedule.Spec.IngressName != "" {
 		r.waitForDeploymentToWake(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.DeploymentName)
-		r.loadIngressCopy(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.IngressName)
+		err := r.loadIngressCopy(ctx, sleepSchedule)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Failed to load Ingress copy")
+			return err
+		}
 	}
+
+	return nil
 }
 
 func (r *SleepScheduleReconciler) sleep(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
 	if sleepSchedule.Spec.IngressName != "" {
 		r.takeIngressCopy(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.IngressName)
-		r.pointIngressToSnorlax(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.IngressName)
+		r.pointIngressToSnorlax(ctx, sleepSchedule)
 	}
 
 	r.scaleDeployment(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.DeploymentName, 0)
@@ -179,6 +183,7 @@ func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, namespace
 		log.FromContext(ctx).Error(err, "Failed to get Ingress for copy")
 		return
 	}
+
 	ingressYAML, err := yaml.Marshal(ingress)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to marshal Ingress YAML")
@@ -187,7 +192,7 @@ func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, namespace
 
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "snorlax.ingress." + ingressName,
+			Name:      "snorlax.ingress-copy." + ingressName,
 			Namespace: namespace,
 		},
 		Data: map[string]string{
@@ -202,9 +207,119 @@ func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, namespace
 	}
 }
 
-func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, namespace, ingressName string) {
+func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
+	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
+
+	// Create the snorlax service for this ingress
+	snorlaxService := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      objectName,
+			Namespace: sleepSchedule.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "snorlax.moon-society.io/v1beta1",
+					Kind:               "SleepSchedule",
+					Name:               sleepSchedule.Name,
+					UID:                sleepSchedule.UID,
+					Controller:         pointer.Bool(true),
+					BlockOwnerDeletion: pointer.Bool(true),
+				},
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{
+				"app": "snorlax",
+			},
+			Ports: []corev1.ServicePort{
+				{
+					Name:       "http",
+					Port:       80,
+					TargetPort: intstr.FromInt(80),
+				},
+			},
+		},
+	}
+
+	// Check if the service already exists
+	existingService := &corev1.Service{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, existingService)
+	if err != nil && client.IgnoreNotFound(err) != nil {
+		log.FromContext(ctx).Error(err, "Failed to get existing Snorlax service")
+		return
+	}
+
+	// Create the service if it doesn't exist
+	if err != nil && client.IgnoreNotFound(err) == nil {
+		err = r.Create(ctx, snorlaxService)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Failed to create Snorlax service")
+			return
+		}
+	}
+
+	// Deploy Snorlax container and service
+	snorlaxDeployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      objectName,
+			Namespace: sleepSchedule.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "snorlax.moon-society.io/v1beta1",
+					Kind:               "SleepSchedule",
+					Name:               sleepSchedule.Name,
+					UID:                sleepSchedule.UID,
+					Controller:         pointer.Bool(true),
+					BlockOwnerDeletion: pointer.Bool(true),
+				},
+			},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: int32Ptr(1),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "snorlax",
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "snorlax",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name: "snorlax",
+							// Image: "snorlax:latest",
+							Image: "nginx:latest",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	existingDeployment := &appsv1.Deployment{}
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, existingDeployment)
+	if err != nil && client.IgnoreNotFound(err) != nil {
+		log.FromContext(ctx).Error(err, "Failed to get existing Snorlax deployment")
+		return
+	}
+
+	if err != nil && client.IgnoreNotFound(err) == nil {
+		err = r.Create(ctx, snorlaxDeployment)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Failed to create Snorlax deployment")
+			return
+		}
+	}
+
+	// Wait for Snorlax deployment to be ready
+	r.waitForDeploymentToWake(ctx, sleepSchedule.Namespace, objectName)
+
+	// Update ingress to point to snorlax service
 	ingress := &networkingv1.Ingress{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ingressName}, ingress)
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: sleepSchedule.Spec.IngressName}, ingress)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to get Ingress for update")
 		return
@@ -220,7 +335,7 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, nam
 							PathType: &pathType,
 							Backend: networkingv1.IngressBackend{
 								Service: &networkingv1.IngressServiceBackend{
-									Name: "snorlax-nginx",
+									Name: objectName,
 									Port: networkingv1.ServiceBackendPort{Number: 80},
 								},
 							},
@@ -234,34 +349,64 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, nam
 	err = r.Update(ctx, ingress)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to update Ingress to point to Snorlax")
+		return
 	}
+
 }
 
-func (r *SleepScheduleReconciler) loadIngressCopy(ctx context.Context, namespace, ingressName string) {
-	configMap := &corev1.ConfigMap{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: "snorlax.ingress." + ingressName}, configMap)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to get ConfigMap")
-		return
+func int32Ptr(i int32) *int32 {
+	return &i
+}
+
+func (r *SleepScheduleReconciler) loadIngressCopy(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
+	// configMap := &corev1.ConfigMap{}
+	// err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: "snorlax.ingress-copy." + ingressName}, configMap)
+	// if err != nil {
+	// 	log.FromContext(ctx).Error(err, "Failed to get ConfigMap")
+	// 	return
+	// }
+
+	// ingress := &networkingv1.Ingress{}
+	// err = yaml.Unmarshal([]byte(configMap.Data["ingressYAML"]), ingress)
+	// if err != nil {
+	// 	log.FromContext(ctx).Error(err, "Failed to unmarshal Ingress YAML")
+	// 	return
+	// }
+
+	// ingressSpecJSON, err := json.Marshal(ingress.Spec)
+	// if err != nil {
+	// 	log.FromContext(ctx).Error(err, "Failed to marshal Ingress spec into JSON")
+	// 	return
+	// }
+
+	// err = r.Patch(ctx, ingress, client.RawPatch(types.MergePatchType, []byte(fmt.Sprintf(`{"spec": %s}`, ingressSpecJSON))))
+	// if err != nil {
+	// 	log.FromContext(ctx).Error(err, "Failed to patch Ingress with original spec")
+	// }
+
+	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
+
+	existingService := &corev1.Service{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, existingService)
+	if err == nil {
+		err = r.Delete(ctx, existingService)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Failed to delete snorlax service")
+			return err
+		}
 	}
 
-	ingress := &networkingv1.Ingress{}
-	err = yaml.Unmarshal([]byte(configMap.Data["ingressYAML"]), ingress)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to unmarshal Ingress YAML")
-		return
+	existingDeployment := &appsv1.Deployment{}
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, existingDeployment)
+	if err == nil {
+		err = r.Delete(ctx, existingDeployment)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Failed to delete snorlax deployment")
+			return err
+		}
 	}
 
-	ingressSpecJSON, err := json.Marshal(ingress.Spec)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to marshal Ingress spec into JSON")
-		return
-	}
-
-	err = r.Patch(ctx, ingress, client.RawPatch(types.MergePatchType, []byte(fmt.Sprintf(`{"spec": %s}`, ingressSpecJSON))))
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to patch Ingress with original spec")
-	}
+	return nil
 }
 
 func (r *SleepScheduleReconciler) SetupWithManager(mgr ctrl.Manager) error {
