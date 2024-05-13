@@ -7,14 +7,11 @@ metadata:
     app.kubernetes.io/part-of: operator
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: operator
+  namespace: default
   name: sleepschedule-sample
 spec:
-  namespace: some-ns
-  deploymentName: some-deployment
+  wakeTime: '08:00'
+  sleepTime: '20:00'
+  deploymentName: nginx-deployment
   replicaCount: 3
-
-  sleepTime:
-  wakeTime:
-
-  ingressName:
-  port:
+  # ingressName:

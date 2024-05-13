@@ -58,14 +58,28 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	now := time.Now()
-	wakeTime := time.Date(now.Year(), now.Month(), now.Day(), sleepSchedule.Spec.WakeTime.Hour(), sleepSchedule.Spec.WakeTime.Minute(), 0, 0, now.Location())
-	sleepTime := time.Date(now.Year(), now.Month(), now.Day(), sleepSchedule.Spec.SleepTime.Hour(), sleepSchedule.Spec.SleepTime.Minute(), 0, 0, now.Location())
 
+	wakeTime, err := time.Parse("15:04", sleepSchedule.Spec.WakeTime)
+	if err != nil {
+		log.Error(err, "failed to parse wake time")
+		return ctrl.Result{}, err
+	}
+
+	sleepTime, err := time.Parse("15:04", sleepSchedule.Spec.SleepTime)
+	if err != nil {
+		log.Error(err, "failed to parse sleep time")
+		return ctrl.Result{}, err
+	}
+
+	wakeDatetime := time.Date(now.Year(), now.Month(), now.Day(), wakeTime.Hour(), wakeTime.Minute(), 0, 0, time.Local)
+	sleepDatetime := time.Date(now.Year(), now.Month(), now.Day(), sleepTime.Hour(), sleepTime.Minute(), 0, 0, time.Local)
+
+	// Determine if the app should be awake or asleep
 	var shouldSleep bool
-	if wakeTime.Before(sleepTime) {
-		shouldSleep = now.Before(wakeTime) || now.After(sleepTime)
+	if wakeDatetime.Before(sleepDatetime) {
+		shouldSleep = now.Before(wakeDatetime) || now.After(sleepDatetime)
 	} else {
-		shouldSleep = now.Before(sleepTime) || now.After(wakeTime)
+		shouldSleep = now.Before(sleepDatetime) || now.After(wakeDatetime)
 	}
 
 	awake, err := r.isAppAwake(ctx, sleepSchedule)
@@ -102,7 +116,7 @@ func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule 
 	}
 
 	// Consider "awake" if at least one replica is available
-	return deployment.Status.AvailableReplicas > 0, nil
+	return deployment.Status.Replicas > 0, nil
 }
 
 func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {

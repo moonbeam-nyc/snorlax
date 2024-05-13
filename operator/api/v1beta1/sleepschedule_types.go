@@ -17,8 +17,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"time"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,22 +27,21 @@ type SleepScheduleSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	DeploymentName string    `json:"deploymentName,omitempty"`
-	Kubeconfig     string    `json:"kubeconfig,omitempty"`
-	Namespace      string    `json:"namespace,omitempty"`
-	ReplicaCount   int       `json:"replicaCount,omitempty"`
-	SleepTime      time.Time `json:"sleepTime,omitempty"`
-	WakeTime       time.Time `json:"wakeTime,omitempty"`
-	IngressName    string    `json:"ingressName,omitempty"`
-	Port           int       `json:"port,omitempty"`
+	// +kubebuilder:validation:Required
+	WakeTime string `json:"wakeTime"`
+	// +kubebuilder:validation:Required
+	SleepTime string `json:"sleepTime"`
+
+	DeploymentName string `json:"deploymentName,omitempty"`
+	ReplicaCount   int    `json:"replicaCount,omitempty"`
+	IngressName    string `json:"ingressName,omitempty"`
 }
 
 // SleepScheduleStatus defines the observed state of SleepSchedule
 type SleepScheduleStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Awake    bool `json:"awake,omitempty"`
-	Replicas int  `json:"replicas,omitempty"`
+	Awake bool `json:"awake,omitempty"`
 }
 
 //+kubebuilder:object:root=true
