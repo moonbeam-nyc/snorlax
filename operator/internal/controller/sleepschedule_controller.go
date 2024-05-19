@@ -47,6 +47,7 @@ type SleepScheduleReconciler struct {
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules/finalizers,verbs=update
+//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;watch
 
 func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
@@ -122,7 +123,7 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		wakeRequestReceived = configMap.Data["received-request"] == "true"
 	}
 
-	log.Info(fmt.Sprintf("wakeRequestReceived: %t", wakeRequestReceived))
+	// log.Info(fmt.Sprintf("wakeRequestReceived: %t", wakeRequestReceived))
 
 	if awake && shouldSleep && !wakeRequestReceived {
 		log.Info("Going to sleep")
@@ -152,7 +153,7 @@ func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule 
 	}
 
 	// Consider "awake" if at least one replica is available
-	return deployment.Status.Replicas > 0, nil
+	return *deployment.Spec.Replicas > 0, nil
 }
 
 func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
@@ -197,7 +198,7 @@ func (r *SleepScheduleReconciler) waitForDeploymentToWake(ctx context.Context, n
 	logger := log.FromContext(ctx)
 
 	for {
-		logger.Info("Waiting for deployment to wake")
+		logger.Info(fmt.Sprintf("Waiting for deployment to wake: %s", deploymentName))
 		deployment := &appsv1.Deployment{}
 		err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: deploymentName}, deployment)
 		if err != nil {
@@ -206,7 +207,7 @@ func (r *SleepScheduleReconciler) waitForDeploymentToWake(ctx context.Context, n
 		}
 
 		if deployment.Status.ReadyReplicas == *deployment.Spec.Replicas {
-			logger.Info("Deployment replicas are ready")
+			logger.Info(fmt.Sprintf("Deployment replicas are ready: %s", deploymentName))
 			break
 		}
 
@@ -215,6 +216,9 @@ func (r *SleepScheduleReconciler) waitForDeploymentToWake(ctx context.Context, n
 }
 
 func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
+
+	fmt.Println("Taking ingress copy")
+
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 
 	ingress := &networkingv1.Ingress{}
@@ -569,5 +573,6 @@ func (r *SleepScheduleReconciler) loadIngressCopy(ctx context.Context, sleepSche
 func (r *SleepScheduleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&snorlaxv1beta1.SleepSchedule{}).
+		Owns(&corev1.ConfigMap{}).
 		Complete(r)
 }
