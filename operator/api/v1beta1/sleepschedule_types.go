@@ -32,7 +32,7 @@ type SleepScheduleSpec struct {
 	// +kubebuilder:validation:Required
 	SleepTime string `json:"sleepTime"`
 	// +kubebuilder:validation:Required
-	TimeZone string `json:"timeZone"`
+	Timezone string `json:"timezone"`
 
 	DeploymentName string `json:"deploymentName,omitempty"`
 	ReplicaCount   int    `json:"replicaCount,omitempty"`

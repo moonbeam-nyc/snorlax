@@ -6,7 +6,7 @@ metadata:
 spec:
   wakeTime: '8am'
   sleepTime: '2am'
-  timeZone: 'America/New_York'
+  timezone: 'America/New_York'
   deploymentName: nginx-deployment
   replicaCount: 2
   ingressName: nginx-ingress

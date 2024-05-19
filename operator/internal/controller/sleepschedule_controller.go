@@ -57,32 +57,35 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	now := time.Now()
 
+	// Parse the wake time
 	wakeTime, err := time.Parse("3pm", sleepSchedule.Spec.WakeTime)
 	if err != nil {
 		log.Error(err, "failed to parse wake time")
 		return ctrl.Result{}, err
 	}
 
+	// Parse the sleep time
 	sleepTime, err := time.Parse("3pm", sleepSchedule.Spec.SleepTime)
 	if err != nil {
 		log.Error(err, "failed to parse sleep time")
 		return ctrl.Result{}, err
 	}
 
-	var timeZone *time.Location
-	if sleepSchedule.Spec.TimeZone != "" {
+	// Load the timezone
+	var timezone *time.Location
+	if sleepSchedule.Spec.Timezone != "" {
 		var err error
-		timeZone, err = time.LoadLocation(sleepSchedule.Spec.TimeZone)
+		timezone, err = time.LoadLocation(sleepSchedule.Spec.Timezone)
 		if err != nil {
 			log.Error(err, "failed to load time zone")
 			return ctrl.Result{}, err
 		}
 	} else {
-		timeZone = time.UTC
+		timezone = time.UTC
 	}
 
-	wakeDatetime := time.Date(now.Year(), now.Month(), now.Day(), wakeTime.Hour(), wakeTime.Minute(), 0, 0, timeZone)
-	sleepDatetime := time.Date(now.Year(), now.Month(), now.Day(), sleepTime.Hour(), sleepTime.Minute(), 0, 0, timeZone)
+	wakeDatetime := time.Date(now.Year(), now.Month(), now.Day(), wakeTime.Hour(), wakeTime.Minute(), 0, 0, timezone)
+	sleepDatetime := time.Date(now.Year(), now.Month(), now.Day(), sleepTime.Hour(), sleepTime.Minute(), 0, 0, timezone)
 
 	// Determine if the app should be awake or asleep
 	var shouldSleep bool
