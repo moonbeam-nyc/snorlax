@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"io/fs"
@@ -10,12 +11,18 @@ import (
 
 	cc "github.com/ivanpirog/coloredcobra"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+	"github.com/spf13/viper" // Add this line
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 type Config struct {
-	Kubeconfig string `mapstructure:"KUBECONFIG"`
-	Port       int    `mapstructure:"PORT"`
+	Kubeconfig    string `mapstructure:"KUBECONFIG"`
+	DataConfigmap string `mapstructure:"DATA_CONFIGMAP"`
+	Namespace     string `mapstructure:"NAMESPACE"`
+	Port          int    `mapstructure:"PORT"`
 }
 
 func init() {
@@ -23,6 +30,7 @@ func init() {
 }
 
 var config Config
+var k8sConfig *rest.Config
 
 //go:embed static/*
 var staticFiles embed.FS
@@ -66,7 +74,20 @@ func serve() {
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Set state in configmap
+		// Set state in configmap
+		k8sClient := createK8sClient()
+
+		configMap, err := k8sClient.CoreV1().ConfigMaps(config.Namespace).Get(context.TODO(), config.DataConfigmap, metav1.GetOptions{})
+		if err != nil {
+			log.Fatalf("Failed to get configmap: %v", err)
+		}
+
+		configMap.Data["received-request"] = "true"
+
+		_, err = k8sClient.CoreV1().ConfigMaps(config.Namespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
+		if err != nil {
+			log.Fatalf("Failed to update configmap: %v", err)
+		}
 		fileServer.ServeHTTP(w, r)
 	})
 
@@ -75,40 +96,46 @@ func serve() {
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), nil))
 }
 
-// func createK8sClient() *kubernetes.Clientset {
-// 	// Setup config
-// 	var k8sConfig *rest.Config
-// 	var err error
+func createK8sClient() *kubernetes.Clientset {
+	// Setup config
+	var err error
 
-// 	if kubeconfig := config.Kubeconfig; kubeconfig != "" {
-// 		k8sConfig, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-// 		if err != nil {
-// 			log.Fatalf("Failed to create config from KUBECONFIG: %v", err)
-// 		}
-// 	} else {
-// 		k8sConfig, err = rest.InClusterConfig()
-// 		if err != nil {
-// 			log.Fatalf("Failed to create in-cluster config: %v", err)
-// 		}
-// 	}
+	// Create the clientset
+	clientset, err := kubernetes.NewForConfig(k8sConfig)
+	if err != nil {
+		log.Fatalf("Failed to create clientset: %v", err)
+	}
 
-// 	// Create the clientset
-// 	clientset, err := kubernetes.NewForConfig(k8sConfig)
-// 	if err != nil {
-// 		log.Fatalf("Failed to create clientset: %v", err)
-// 	}
-
-// 	return clientset
-// }
+	return clientset
+}
 
 func loadConfig() {
 	// Bind environment variables to config struct
 	viper.AutomaticEnv()
+	viper.SetEnvPrefix("SNORLAX")
+	viper.BindEnv("DATA_CONFIGMAP")
 	viper.BindEnv("KUBECONFIG")
 	viper.BindEnv("PORT")
+	viper.BindEnv("NAMESPACE")
 	viper.Unmarshal(&config)
 
-	//fmt.Printf("%+v\n", config)
+	fmt.Printf("%+v\n", config)
+
+	var err error
+	if kubeconfig := config.Kubeconfig; kubeconfig != "" {
+		log.Default().Print("Using local kubeconfig")
+		k8sConfig, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+		if err != nil {
+			log.Fatalf("Failed to create config from KUBECONFIG: %v", err)
+		}
+	} else {
+		log.Default().Print("Using in-cluster config")
+		k8sConfig, err = rest.InClusterConfig()
+		if err != nil {
+			log.Fatalf("Failed to create in-cluster config: %v", err)
+		}
+	}
+
 }
 
 func runCli() {

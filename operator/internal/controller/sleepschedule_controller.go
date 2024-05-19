@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	snorlaxv1beta1 "moon-society/snorlax/api/v1beta1"
 	"time"
@@ -29,6 +30,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -56,6 +58,7 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 	now := time.Now()
 
 	// Parse the wake time
@@ -108,10 +111,23 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
-	if awake && shouldSleep {
+	// Check if the configmaps request-received key was set to "true"
+	var wakeRequestReceived bool
+	configMap := &corev1.ConfigMap{}
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-proxy-data", objectName)}, configMap)
+	if err != nil {
+		// log.Error(err, "Failed to get ConfigMap")
+		wakeRequestReceived = false
+	} else {
+		wakeRequestReceived = configMap.Data["received-request"] == "true"
+	}
+
+	log.Info(fmt.Sprintf("wakeRequestReceived: %t", wakeRequestReceived))
+
+	if awake && shouldSleep && !wakeRequestReceived {
 		log.Info("Going to sleep")
 		r.sleep(ctx, sleepSchedule)
-	} else if !awake && !shouldSleep {
+	} else if !awake && (!shouldSleep || wakeRequestReceived) {
 		log.Info("Waking up")
 		r.wake(ctx, sleepSchedule)
 	}
@@ -156,7 +172,7 @@ func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorl
 
 func (r *SleepScheduleReconciler) sleep(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
 	if sleepSchedule.Spec.IngressName != "" {
-		r.takeIngressCopy(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.IngressName)
+		r.takeIngressCopy(ctx, sleepSchedule)
 		r.pointIngressToSnorlax(ctx, sleepSchedule)
 	}
 
@@ -198,9 +214,11 @@ func (r *SleepScheduleReconciler) waitForDeploymentToWake(ctx context.Context, n
 	}
 }
 
-func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, namespace, ingressName string) {
+func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
+	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
+
 	ingress := &networkingv1.Ingress{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ingressName}, ingress)
+	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: sleepSchedule.Spec.IngressName}, ingress)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to get Ingress for copy")
 		return
@@ -214,8 +232,8 @@ func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, namespace
 
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "snorlax.ingress-copy." + ingressName,
-			Namespace: namespace,
+			Name:      objectName + "-" + sleepSchedule.Spec.IngressName,
+			Namespace: sleepSchedule.Namespace,
 		},
 		Data: map[string]string{
 			"ingressYAML": string(ingressYAML),
@@ -327,7 +345,6 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 			return
 		}
 	}
-
 	// Create role binding
 	roleBinding := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
@@ -361,6 +378,35 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 		}
 	}
 
+	// Create the configmap for proxy data
+	proxyDataConfigMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            fmt.Sprintf("%s-proxy-data", objectName),
+			Namespace:       sleepSchedule.Namespace,
+			OwnerReferences: []metav1.OwnerReference{ownerRef},
+		},
+		Data: map[string]string{
+			"received-request": "false",
+		},
+	}
+
+	// Check if the configmap already exists
+	existingConfigMap := &corev1.ConfigMap{}
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-proxy-data", objectName)}, existingConfigMap)
+	if err != nil && client.IgnoreNotFound(err) != nil {
+		log.FromContext(ctx).Error(err, "Failed to get existing proxy data configmap")
+		return
+	}
+
+	// Create the configmap if it doesn't exist
+	if err != nil && client.IgnoreNotFound(err) == nil {
+		err = r.Create(ctx, proxyDataConfigMap)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Failed to create proxy data configmap")
+			return
+		}
+	}
+
 	// Deploy Snorlax container and service
 	snorlaxDeployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -388,6 +434,20 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 							Name:            "snorlax",
 							Image:           "ghcr.io/moon-society/snorlax:latest",
 							ImagePullPolicy: "IfNotPresent",
+							Env: []corev1.EnvVar{
+								{
+									Name:  "SNORLAX_DATA_CONFIGMAP",
+									Value: fmt.Sprintf("%s-proxy-data", objectName),
+								},
+								{
+									Name:  "SNORLAX_PORT",
+									Value: "8080",
+								},
+								{
+									Name:  "SNORLAX_NAMESPACE",
+									Value: sleepSchedule.Namespace,
+								},
+							},
 						},
 					},
 				},
@@ -456,35 +516,35 @@ func int32Ptr(i int32) *int32 {
 }
 
 func (r *SleepScheduleReconciler) loadIngressCopy(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
-	// configMap := &corev1.ConfigMap{}
-	// err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: "snorlax.ingress-copy." + ingressName}, configMap)
-	// if err != nil {
-	// 	log.FromContext(ctx).Error(err, "Failed to get ConfigMap")
-	// 	return
-	// }
-
-	// ingress := &networkingv1.Ingress{}
-	// err = yaml.Unmarshal([]byte(configMap.Data["ingressYAML"]), ingress)
-	// if err != nil {
-	// 	log.FromContext(ctx).Error(err, "Failed to unmarshal Ingress YAML")
-	// 	return
-	// }
-
-	// ingressSpecJSON, err := json.Marshal(ingress.Spec)
-	// if err != nil {
-	// 	log.FromContext(ctx).Error(err, "Failed to marshal Ingress spec into JSON")
-	// 	return
-	// }
-
-	// err = r.Patch(ctx, ingress, client.RawPatch(types.MergePatchType, []byte(fmt.Sprintf(`{"spec": %s}`, ingressSpecJSON))))
-	// if err != nil {
-	// 	log.FromContext(ctx).Error(err, "Failed to patch Ingress with original spec")
-	// }
-
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 
+	configMap := &corev1.ConfigMap{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName + "-" + sleepSchedule.Spec.IngressName}, configMap)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get ConfigMap")
+		return err
+	}
+
+	ingress := &networkingv1.Ingress{}
+	err = yaml.Unmarshal([]byte(configMap.Data["ingressYAML"]), ingress)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to unmarshal Ingress YAML")
+		return err
+	}
+
+	ingressSpecJSON, err := json.Marshal(ingress.Spec)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to marshal Ingress spec into JSON")
+		return err
+	}
+
+	err = r.Patch(ctx, ingress, client.RawPatch(types.MergePatchType, []byte(fmt.Sprintf(`{"spec": %s}`, ingressSpecJSON))))
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to patch Ingress with original spec")
+	}
+
 	existingService := &corev1.Service{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, existingService)
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, existingService)
 	if err == nil {
 		err = r.Delete(ctx, existingService)
 		if err != nil {

@@ -5,7 +5,7 @@ metadata:
   name: nginx
 spec:
   wakeTime: '8am'
-  sleepTime: '12am'
+  sleepTime: '2pm'
   timezone: 'America/New_York'
   deploymentName: nginx-deployment
   replicaCount: 2

@@ -37,17 +37,44 @@
     dots.textContent = dots.textContent.length < 3 ? dots.textContent + "." : ".";
   }, 1000);
 
+  async function fetchWithTimeout(resource, options = {}) {
+    const { timeout = 5000 } = options;
+
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+
+    const response = await fetch(resource, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+
+    return response;
+  }
+
+  function reloadIf200() {
+    fetchWithTimeout('/').then((response) => {
+      if (response.status === 200) {
+        location.reload();
+      }
+    })
+  }
+
   setInterval(function() {
-    fetch('/still-sleeping')
+    fetchWithTimeout('/still-sleeping')
       .then(function(response) {
         if (response.status !== 200) {
           // If the page is no longer 200, then the snorlax controller has reinstated the original ingress,
           // which means the original deployment is awake and ready.
-          location.reload();
+          reloadIf200()
         }
       })
       .catch(function(error) {
         console.error('Error checking if still sleeping:', error);
+        if (error.name === 'AbortError') {
+          console.error('Fetch timed out');
+          reloadIf200()
+        }
       });
   }, 2000);
 
