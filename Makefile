@@ -1,8 +1,13 @@
-OPERATOR_IMG = ghcr.io/moon-society/snorlax-operator:latest
 BUNDLE_IMG = ghcr.io/moon-society/snorlax-operator-bundle:latest
+OPERATOR_IMG = ghcr.io/moon-society/snorlax-operator:latest
+PROXY_IMG = ghcr.io/moon-society/snorlax-proxy:latest
 
-all: prepare operator-run
-setup: minikube-delete minikube-start proxy-install operator-crd-install sleep dummy-install
+
+## Workflows
+
+setup: minikube-delete minikube-start proxy-install operator-crd-install dummy-install
+test: minikube-delete minikube-start operator-bundle dummy-install
+publish: proxy-push operator-push
 
 
 ## Local commands
@@ -20,7 +25,7 @@ clean:
 	rm -f snorlax
 
 sleep:
-	sleep 10
+	sleep 20
 
 
 ## Docker commands
@@ -28,17 +33,21 @@ sleep:
 proxy-build:
 	docker compose build snorlax
 
+proxy-push: proxy-build
+	docker push $(PROXY_IMG)
+
 proxy-install: proxy-build
-	docker save ghcr.io/moon-society/snorlax-proxy | (eval $$(minikube docker-env) && docker load)
+	docker save $(PROXY_IMG) | (eval $$(minikube docker-env) && docker load)
 
 proxy-serve: docker-build
-	docker run -p 8080:8080 snorlax serve
+	docker run -p 8080:8080 $(PROXY_IMG) serve
 
 
 ## Minikube commands
 
 minikube-start:
 	minikube start --addons ingress
+	kubectl rollout status -n ingress-nginx deployment/ingress-nginx-controller
 
 minikube-delete:
 	minikube delete
@@ -58,12 +67,10 @@ operator-crd-install:
 
 ## Operator
 
-operator: operator-build operator-push operator-deploy
-
 operator-build:
 	cd operator && make docker-build IMG=$(OPERATOR_IMG)
 
-operator-push:
+operator-push: operator-build
 	cd operator && make docker-push IMG=$(OPERATOR_IMG)
 
 operator-deploy:
@@ -75,7 +82,10 @@ operator-run:
 
 ## Operator bundle
 
-operator-bundle: operator-bundle-init operator-bundle-build operator-bundle-push operator-bundle-deploy
+operator-bundle: operator-bundle-olm-install operator-bundle-init operator-bundle-build operator-bundle-push operator-bundle-deploy
+
+operator-bundle-olm-install:
+	operator-sdk olm install
 
 operator-bundle-init:
 	cd operator && make bundle

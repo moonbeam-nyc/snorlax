@@ -442,7 +442,7 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 					Containers: []corev1.Container{
 						{
 							Name:            "snorlax",
-							Image:           "ghcr.io/moon-society/snorlax:latest",
+							Image:           "ghcr.io/moon-society/snorlax-proxy:latest",
 							ImagePullPolicy: "IfNotPresent",
 							Env: []corev1.EnvVar{
 								{
