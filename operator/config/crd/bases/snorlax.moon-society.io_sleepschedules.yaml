@@ -46,13 +46,13 @@ spec:
                 type: integer
               sleepTime:
                 type: string
-              timeZone:
+              timezone:
                 type: string
               wakeTime:
                 type: string
             required:
             - sleepTime
-            - timeZone
+            - timezone
             - wakeTime
             type: object
           status:

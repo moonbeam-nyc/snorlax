@@ -26,6 +26,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -231,21 +232,21 @@ func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, namespace
 func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 
+	ownerRef := metav1.OwnerReference{
+		APIVersion:         "snorlax.moon-society.io/v1beta1",
+		Kind:               "SleepSchedule",
+		Name:               sleepSchedule.Name,
+		UID:                sleepSchedule.UID,
+		Controller:         pointer.Bool(true),
+		BlockOwnerDeletion: pointer.Bool(true),
+	}
+
 	// Create the snorlax service for this ingress
 	snorlaxService := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      objectName,
-			Namespace: sleepSchedule.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         "snorlax.moon-society.io/v1beta1",
-					Kind:               "SleepSchedule",
-					Name:               sleepSchedule.Name,
-					UID:                sleepSchedule.UID,
-					Controller:         pointer.Bool(true),
-					BlockOwnerDeletion: pointer.Bool(true),
-				},
-			},
+			Name:            objectName,
+			Namespace:       sleepSchedule.Namespace,
+			OwnerReferences: []metav1.OwnerReference{ownerRef},
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{
@@ -278,21 +279,94 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 		}
 	}
 
+	// Create service account
+	serviceAccount := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            objectName,
+			Namespace:       sleepSchedule.Namespace,
+			OwnerReferences: []metav1.OwnerReference{ownerRef},
+		},
+	}
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, serviceAccount)
+	if err != nil && client.IgnoreNotFound(err) != nil {
+		log.FromContext(ctx).Error(err, "Failed to get existing service account")
+		return
+	}
+	if err != nil && client.IgnoreNotFound(err) == nil {
+		err = r.Create(ctx, serviceAccount)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Failed to create service account")
+			return
+		}
+	}
+
+	// Create role
+	role := &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            objectName,
+			Namespace:       sleepSchedule.Namespace,
+			OwnerReferences: []metav1.OwnerReference{ownerRef},
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{""},
+				Resources: []string{"configmaps"},
+				Verbs:     []string{"get", "update"},
+			},
+		},
+	}
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, role)
+	if err != nil && client.IgnoreNotFound(err) != nil {
+		log.FromContext(ctx).Error(err, "Failed to get existing role")
+		return
+	}
+	if err != nil && client.IgnoreNotFound(err) == nil {
+		err = r.Create(ctx, role)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Failed to create role")
+			return
+		}
+	}
+
+	// Create role binding
+	roleBinding := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            objectName,
+			Namespace:       sleepSchedule.Namespace,
+			OwnerReferences: []metav1.OwnerReference{ownerRef},
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      objectName,
+				Namespace: sleepSchedule.Namespace,
+			},
+		},
+		RoleRef: rbacv1.RoleRef{
+			Kind:     "Role",
+			Name:     objectName,
+			APIGroup: "rbac.authorization.k8s.io",
+		},
+	}
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, roleBinding)
+	if err != nil && client.IgnoreNotFound(err) != nil {
+		log.FromContext(ctx).Error(err, "Failed to get existing role binding")
+		return
+	}
+	if err != nil && client.IgnoreNotFound(err) == nil {
+		err = r.Create(ctx, roleBinding)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Failed to create role binding")
+			return
+		}
+	}
+
 	// Deploy Snorlax container and service
 	snorlaxDeployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      objectName,
-			Namespace: sleepSchedule.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         "snorlax.moon-society.io/v1beta1",
-					Kind:               "SleepSchedule",
-					Name:               sleepSchedule.Name,
-					UID:                sleepSchedule.UID,
-					Controller:         pointer.Bool(true),
-					BlockOwnerDeletion: pointer.Bool(true),
-				},
-			},
+			Name:            objectName,
+			Namespace:       sleepSchedule.Namespace,
+			OwnerReferences: []metav1.OwnerReference{ownerRef},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: int32Ptr(1),
@@ -308,6 +382,7 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 					},
 				},
 				Spec: corev1.PodSpec{
+					ServiceAccountName: objectName,
 					Containers: []corev1.Container{
 						{
 							Name:            "snorlax",
