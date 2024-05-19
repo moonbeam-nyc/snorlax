@@ -1,9 +1,7 @@
 services:
 
   snorlax:
-    image: ghcr.io/moon-society/snorlax:latest
+    image: ghcr.io/moon-society/snorlax-proxy:latest
     build: .
-    environment:
-    - SNORLAX_STATE_CONFIGMAP=snorlax-nginx-proxy-state
     ports:
-    - "8080:8080"
+    - "8080"

@@ -47,7 +47,13 @@ type SleepScheduleReconciler struct {
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules/finalizers,verbs=update
-//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;watch
+//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;watch;list;create;update
+//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;watch;list;scale;update;create;delete
+//+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;watch;list;update;patch
+//+kubebuilder:rbac:groups=core,resources=services,verbs=get;watch;list;create;delete
+//+kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;watch;list;create
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;watch;list;create
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;watch;list;create
 
 func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
