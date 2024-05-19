@@ -1,8 +1,7 @@
+all: minikuve-start dummy-install operator-run
+
 build:
 	go build -o snorlax
-
-
-## Local commands
 
 help: build
 	./snorlax
@@ -19,25 +18,14 @@ sleep: build
 clean:
 	rm -f snorlax
 
+minikube-start:
+	minikube start --addons ingress
 
-## Docker commands
+dummy-install:
+	kubectl apply -f dummy-app/k8s.yaml
 
-docker-build:
-	docker build -t snorlax .
+operator-install:
+	cd operator && make install
 
-docker-watch-serve: docker-build
-	docker run -p 8080:8080 snorlax watch-serve
-
-
-## Minikube commands
-
-minikube: minikube-push minikube-install
-
-minikube-push: docker-build
-	docker save snorlax | (eval $$(minikube docker-env) && docker load)
-
-minikube-install:
-	helm upgrade -i snorlax-nginx charts/snorlax -n default --create-namespace
-
-minikube-uninstall:
-	helm uninstall snorlax-nginx -n default
+operator-run:
+	cd operator && make run

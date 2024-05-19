@@ -57,20 +57,32 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	now := time.Now()
 
-	wakeTime, err := time.Parse("15:04", sleepSchedule.Spec.WakeTime)
+	wakeTime, err := time.Parse("3pm", sleepSchedule.Spec.WakeTime)
 	if err != nil {
 		log.Error(err, "failed to parse wake time")
 		return ctrl.Result{}, err
 	}
 
-	sleepTime, err := time.Parse("15:04", sleepSchedule.Spec.SleepTime)
+	sleepTime, err := time.Parse("3pm", sleepSchedule.Spec.SleepTime)
 	if err != nil {
 		log.Error(err, "failed to parse sleep time")
 		return ctrl.Result{}, err
 	}
 
-	wakeDatetime := time.Date(now.Year(), now.Month(), now.Day(), wakeTime.Hour(), wakeTime.Minute(), 0, 0, time.Local)
-	sleepDatetime := time.Date(now.Year(), now.Month(), now.Day(), sleepTime.Hour(), sleepTime.Minute(), 0, 0, time.Local)
+	var timeZone *time.Location
+	if sleepSchedule.Spec.TimeZone != "" {
+		var err error
+		timeZone, err = time.LoadLocation(sleepSchedule.Spec.TimeZone)
+		if err != nil {
+			log.Error(err, "failed to load time zone")
+			return ctrl.Result{}, err
+		}
+	} else {
+		timeZone = time.UTC
+	}
+
+	wakeDatetime := time.Date(now.Year(), now.Month(), now.Day(), wakeTime.Hour(), wakeTime.Minute(), 0, 0, timeZone)
+	sleepDatetime := time.Date(now.Year(), now.Month(), now.Day(), sleepTime.Hour(), sleepTime.Minute(), 0, 0, timeZone)
 
 	// Determine if the app should be awake or asleep
 	var shouldSleep bool
@@ -79,6 +91,12 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	} else {
 		shouldSleep = now.After(sleepDatetime) && now.Before(wakeDatetime)
 	}
+
+	// fmt.Println("Checking if the app should be awake or asleep")
+	// fmt.Println("now:", now)
+	// fmt.Println("wakeDatetime:", wakeDatetime)
+	// fmt.Println("sleepDatetime:", sleepDatetime)
+	// fmt.Print("shouldSleep:", shouldSleep, "\n\n")
 
 	awake, err := r.isAppAwake(ctx, sleepSchedule)
 	if err != nil {
@@ -315,6 +333,7 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 	}
 
 	// Wait for Snorlax deployment to be ready
+	time.Sleep(1 * time.Second)
 	r.waitForDeploymentToWake(ctx, sleepSchedule.Namespace, objectName)
 
 	// Update ingress to point to snorlax service

@@ -4,8 +4,9 @@ metadata:
   namespace: default
   name: nginx
 spec:
-  wakeTime: '08:00'
-  sleepTime: '02:00'
+  wakeTime: '8am'
+  sleepTime: '10pm'
+  timeZone: 'America/New_York'
   deploymentName: nginx-deployment
   replicaCount: 2
   ingressName: nginx-ingress
