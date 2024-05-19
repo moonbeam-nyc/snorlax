@@ -1,18 +1,9 @@
-version: '3'
-
 services:
 
   snorlax:
-    image: ghcr.io/moon-group/snorlax:latest
+    image: ghcr.io/moon-society/snorlax:latest
     build: .
     environment:
-    - REPLICA_COUNT=1
-    - NAMESPACE=default
-    - DEPLOYMENT_NAME=nginx-deployment
-    - WAKE_TIME=4:08
-    - SLEEP_TIME=4:09
-    - INGRESS_NAME=nginx-ingress
-    volumes:
-    - .:/app
+    - SNORLAX_STATE_CONFIGMAP=snorlax-nginx-proxy-state
     ports:
     - "8080:8080"

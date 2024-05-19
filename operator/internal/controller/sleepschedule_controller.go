@@ -252,7 +252,7 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 				{
 					Name:       "http",
 					Port:       80,
-					TargetPort: intstr.FromInt(80),
+					TargetPort: intstr.FromInt(8080),
 				},
 			},
 		},
@@ -307,9 +307,9 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name: "snorlax",
-							// Image: "snorlax:latest",
-							Image: "nginx:latest",
+							Name:            "snorlax",
+							Image:           "ghcr.io/moon-society/snorlax:latest",
+							ImagePullPolicy: "IfNotPresent",
 						},
 					},
 				},

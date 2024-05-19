@@ -27,4 +27,4 @@ WORKDIR /app
 COPY --from=0 /app/snorlax .
 
 # Set the default command
-CMD ["./snorlax", "watch-serve"]
+CMD ["./snorlax", "serve"]
