@@ -7,7 +7,7 @@ PROXY_IMG = ghcr.io/moon-society/snorlax-proxy:latest
 
 setup: minikube-delete minikube-start proxy-install operator-crd-install dummy-install
 test: minikube-delete minikube-start operator-bundle dummy-install
-publish: proxy-push operator-push
+release-images: proxy-push operator-push
 
 
 ## Local commands
@@ -27,6 +27,11 @@ clean:
 sleep:
 	sleep 20
 
+helm-install:
+	helm install snorlax ./charts/snorlax \
+		--create-namespace \
+		--namespace snorlax
+
 
 ## Docker commands
 
@@ -44,6 +49,8 @@ proxy-serve: docker-build
 
 
 ## Minikube commands
+
+minikube-reset: minikube-delete minikube-start
 
 minikube-start:
 	minikube start --addons ingress
@@ -75,6 +82,9 @@ operator-push: operator-build
 
 operator-deploy:
 	cd operator && make deploy IMG=$(OPERATOR_IMG)
+
+operator-helmify:
+	cd operator && make helmify
 
 operator-run:
 	cd operator && make run
