@@ -43,7 +43,6 @@ helm-uninstall:
 helm-package:
 	cd ./charts/snorlax && helm package .
 	mv ./charts/snorlax/snorlax-*.tgz .
-	helm repo index --url moon-society.github.io/snorlax .
 
 
 ## Docker commands
