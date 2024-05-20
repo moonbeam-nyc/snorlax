@@ -29,6 +29,7 @@ You create `SleepSchedule` resources to define the schedule for any deployment (
 2. Create your `SleepSchedule` resource to define the schedule for the deployment
     ```yaml
     # your-app-sleep-schedule.yaml
+
     apiVersion: snorlax.moon-society.io/v1beta1
     kind: SleepSchedule
     metadata:
