@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./static/logo-small.png" alt="Logo" width="300">
+  <img src="./proxy/static/logo-small.png" alt="Logo" width="300">
 </div>
 
 # Snorlax
@@ -14,7 +14,7 @@ You create `SleepSchedule` resources to define the schedule for any deployment (
 
 ## See it in action
 
-![Snorlax Demo](./static/demo.gif)
+![Snorlax Demo](./proxy/static/demo.gif)
 
 
 ## Usage
