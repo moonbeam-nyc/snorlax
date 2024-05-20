@@ -2,43 +2,45 @@ apiVersion: snorlax.moon-society.io/v1beta1
 kind: SleepSchedule
 metadata:
   namespace: default
-  name: nginx
+  name: dummy
 spec:
   wakeTime: '8am'
   sleepTime: '2pm'
   timezone: 'America/New_York'
-  deploymentName: nginx-deployment
-  replicaCount: 2
-  ingressName: nginx-ingress
+  deploymentName: dummy-deployment
+  ingressName: dummy-ingress
+  wakeReplicas: 2
 
 ---
 
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx-deployment
+  name: dummy-deployment
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nginx
+      app: dummy
   template:
     metadata:
       labels:
-        app: nginx
+        app: dummy
     spec:
       containers:
-        - name: nginx
-          image: nginx:latest
+        - name: dummy
+          # image: nginx:latest
+          image: okteto/example-react
           ports:
-            - containerPort: 80
-
+            # - containerPort: 80
+            - containerPort: 9000
+#
 ---
 
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: nginx-ingress
+  name: dummy-ingress
 spec:
   ingressClassName: nginx
   rules:
@@ -49,21 +51,21 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: nginx-service
+                name: dummy-service
                 port:
                   number: 80
           - path: /path-one
             pathType: Prefix
             backend:
               service:
-                name: nginx-service
+                name: dummy-service
                 port:
                   number: 80
           - path: /path-two
             pathType: Prefix
             backend:
               service:
-                name: nginx-service
+                name: dummy-service
                 port:
                   number: 80
 
@@ -72,11 +74,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx-service
+  name: dummy-service
 spec:
   selector:
-    app: nginx
+    app: dummy
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 80
+      # targetPort: 80
+      targetPort: 9000

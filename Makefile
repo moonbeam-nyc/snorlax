@@ -6,8 +6,8 @@ PROXY_IMG = ghcr.io/moon-society/snorlax-proxy:${VERSION}
 
 ## Workflows
 
-setup: minikube-delete minikube-start proxy-install operator-crd-install dummy-install
-test: minikube-delete minikube-start operator-bundle dummy-install
+dev-setup: minikube-delete minikube-start proxy-install operator-crd-install dummy-install
+demo: minikube-reset helm-install-remote dummy-install
 release-images: proxy-push operator-push
 
 

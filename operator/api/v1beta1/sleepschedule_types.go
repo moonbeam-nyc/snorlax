@@ -35,7 +35,7 @@ type SleepScheduleSpec struct {
 	Timezone string `json:"timezone"`
 
 	DeploymentName string `json:"deploymentName,omitempty"`
-	ReplicaCount   int    `json:"replicaCount,omitempty"`
+	WakeReplicas   int    `json:"wakeReplicas,omitempty"`
 	IngressName    string `json:"ingressName,omitempty"`
 }
 

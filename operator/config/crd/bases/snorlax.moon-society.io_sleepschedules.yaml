@@ -42,12 +42,12 @@ spec:
                 type: string
               ingressName:
                 type: string
-              replicaCount:
-                type: integer
               sleepTime:
                 type: string
               timezone:
                 type: string
+              wakeReplicas:
+                type: integer
               wakeTime:
                 type: string
             required:

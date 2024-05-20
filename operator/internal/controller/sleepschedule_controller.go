@@ -176,7 +176,7 @@ func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule 
 }
 
 func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
-	r.scaleDeployment(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.DeploymentName, int32(sleepSchedule.Spec.ReplicaCount))
+	r.scaleDeployment(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.DeploymentName, int32(sleepSchedule.Spec.WakeReplicas))
 
 	if sleepSchedule.Spec.IngressName != "" {
 		r.waitForDeploymentToWake(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.DeploymentName)
@@ -199,14 +199,14 @@ func (r *SleepScheduleReconciler) sleep(ctx context.Context, sleepSchedule *snor
 	r.scaleDeployment(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.DeploymentName, 0)
 }
 
-func (r *SleepScheduleReconciler) scaleDeployment(ctx context.Context, namespace, deploymentName string, replicaCount int32) {
+func (r *SleepScheduleReconciler) scaleDeployment(ctx context.Context, namespace, deploymentName string, wakeReplicas int32) {
 	deployment := &appsv1.Deployment{}
 	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: deploymentName}, deployment)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to get Deployment")
 		return
 	}
-	deployment.Spec.Replicas = &replicaCount
+	deployment.Spec.Replicas = &wakeReplicas
 	err = r.Update(ctx, deployment)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to update Deployment replicas")
@@ -236,7 +236,7 @@ func (r *SleepScheduleReconciler) waitForDeploymentToWake(ctx context.Context, n
 
 func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
 
-	fmt.Println("Taking ingress copy")
+	// fmt.Println("Taking ingress copy")
 
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 
