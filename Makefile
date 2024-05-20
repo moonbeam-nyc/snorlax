@@ -1,6 +1,7 @@
-BUNDLE_IMG = ghcr.io/moon-society/snorlax-operator-bundle:latest
-OPERATOR_IMG = ghcr.io/moon-society/snorlax-operator:latest
-PROXY_IMG = ghcr.io/moon-society/snorlax-proxy:latest
+VERSION = 0.1.0
+BUNDLE_IMG = ghcr.io/moon-society/snorlax-operator-bundle:${VERSION}
+OPERATOR_IMG = ghcr.io/moon-society/snorlax-operator:${VERSION}
+PROXY_IMG = ghcr.io/moon-society/snorlax-proxy:${VERSION}
 
 
 ## Workflows
@@ -15,28 +16,29 @@ release-images: proxy-push operator-push
 build:
 	go build -o snorlax
 
-help: build
-	./snorlax
-
 serve: build
 	./snorlax serve
 
 clean:
 	rm -f snorlax
 
-sleep:
-	sleep 20
+
+## Helm commands
 
 helm-install:
 	helm install snorlax ./charts/snorlax \
 		--create-namespace \
 		--namespace snorlax
 
+helm-package:
+	helm package ./charts/snorlax
+	helm repo index --url moon-society.github.io/snorlax .
+
 
 ## Docker commands
 
 proxy-build:
-	docker compose build snorlax
+	VERSION=$(VERSION) docker compose build snorlax
 
 proxy-push: proxy-build
 	docker push $(PROXY_IMG)
@@ -85,6 +87,8 @@ operator-deploy:
 
 operator-helmify:
 	cd operator && make helmify
+	-rm -rf charts/snorlax
+	mv operator/charts/snorlax ./charts/snorlax
 
 operator-run:
 	cd operator && make run

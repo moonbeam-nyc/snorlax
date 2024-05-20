@@ -1,7 +1,7 @@
 services:
 
   snorlax:
-    image: ghcr.io/moon-society/snorlax-proxy:latest
+    image: ghcr.io/moon-society/snorlax-proxy:${VERSION-latest}
     build: .
     ports:
     - "8080"
