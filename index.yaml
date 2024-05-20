@@ -1,0 +1,15 @@
+apiVersion: v1
+entries:
+  snorlax:
+  - apiVersion: v2
+    appVersion: 0.1.0
+    created: "2024-05-19T22:31:27.082732-04:00"
+    description: a Kubernetes service which wakes and sleeps another Kubernetes deployment
+      on a schedule
+    digest: 731e0de7031b31af4860e582b475f08bc51aedbdd5624b90694f017d034f6f8b
+    name: snorlax
+    type: application
+    urls:
+    - moon-society.github.io/snorlax/snorlax-0.1.0.tgz
+    version: 0.1.0
+generated: "2024-05-19T22:31:27.082331-04:00"
