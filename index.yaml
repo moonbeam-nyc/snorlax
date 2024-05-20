@@ -10,6 +10,6 @@ entries:
     name: snorlax
     type: application
     urls:
-    - moon-society.github.io/snorlax/snorlax-0.1.0.tgz
+    - snorlax-0.1.0.tgz
     version: 0.1.0
 generated: "2024-05-19T22:42:37.422379-04:00"
