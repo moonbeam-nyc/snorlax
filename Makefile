@@ -25,8 +25,15 @@ clean:
 
 ## Helm commands
 
-helm-install:
+helm-install-local:
 	helm install snorlax ./charts/snorlax \
+		--create-namespace \
+		--namespace snorlax
+
+helm-install-remote:
+	helm repo add moon-society https://moon-society.github.io/helm-charts
+	helm repo update
+	helm install snorlax moon-society/snorlax \
 		--create-namespace \
 		--namespace snorlax
 
