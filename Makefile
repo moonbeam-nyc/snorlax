@@ -83,6 +83,9 @@ dummy-install:
 operator-crd-install:
 	cd operator && make install
 
+operator-crd-uninstall:
+	cd operator && make uninstall
+
 
 ## Operator
 
