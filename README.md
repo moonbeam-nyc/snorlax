@@ -51,7 +51,15 @@ You create `SleepSchedule` resources to define the schedule for any deployment (
 
 ## How to develop
 
-tbd
+Setup Minikube with the CRD and dummy application with sleep schedule:
+```bash
+make dev-setup
+```
+
+Then make your updates and run the operator:
+```bash
+make operator-run
+```
 
 ## Future work
 
