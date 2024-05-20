@@ -14,13 +14,13 @@ release-images: proxy-push operator-push
 ## Local commands
 
 build:
-	go build -o snorlax
+	cd proxy && go build -o snorlax
 
 serve: build
-	./snorlax serve
+	cd proxy && ./snorlax serve
 
 clean:
-	rm -f snorlax
+	cd proxy && rm -f snorlax
 
 
 ## Helm commands
@@ -48,7 +48,7 @@ helm-package:
 ## Docker commands
 
 proxy-build:
-	VERSION=$(VERSION) docker compose build snorlax
+	cd proxy && VERSION=$(VERSION) docker compose build snorlax
 
 proxy-push: proxy-build
 	docker push $(PROXY_IMG)
