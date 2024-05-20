@@ -30,8 +30,12 @@ helm-install:
 		--create-namespace \
 		--namespace snorlax
 
+helm-uninstall:
+	helm uninstall snorlax --namespace snorlax
+
 helm-package:
-	helm package ./charts/snorlax
+	cd ./charts/snorlax && helm package .
+	mv ./charts/snorlax/snorlax-*.tgz .
 	helm repo index --url moon-society.github.io/snorlax .
 
 
