@@ -1,4 +1,4 @@
-VERSION = 0.1.0
+VERSION = 0.2.0
 BUNDLE_IMG = ghcr.io/moon-society/snorlax-operator-bundle:${VERSION}
 OPERATOR_IMG = ghcr.io/moon-society/snorlax-operator:${VERSION}
 PROXY_IMG = ghcr.io/moon-society/snorlax-proxy:${VERSION}
@@ -8,7 +8,7 @@ PROXY_IMG = ghcr.io/moon-society/snorlax-proxy:${VERSION}
 
 dev-setup: minikube-delete minikube-start proxy-install operator-crd-install dummy-install
 demo: minikube-reset helm-install-remote dummy-install
-release-images: proxy-push operator-push
+release: proxy-push operator-push operator-helmify helm-package
 
 
 ## Local commands
@@ -102,6 +102,8 @@ operator-helmify:
 	cd operator && make helmify IMG=$(OPERATOR_IMG)
 	-rm -rf charts/snorlax
 	mv operator/snorlax ./charts/snorlax
+	VERSION=$(VERSION) yq eval ".version = env(VERSION)" -i charts/snorlax/Chart.yaml
+	VERSION=$(VERSION) yq eval ".appVersion = env(VERSION)" -i charts/snorlax/Chart.yaml
 
 operator-run:
 	cd operator && make run
