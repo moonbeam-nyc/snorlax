@@ -4,10 +4,12 @@
 
 # Snorlax
 
-Snorlax is a Kubernetes service which wakes and sleeps another Kubernetes deployment on a schedule.
+Snorlax is a Kubernetes operator which wakes and sleeps another Kubernetes deployment on a schedule.
 
 And if a request is received when the deployment is sleeping, a cute sleeping Snorlax page is
-served and the Kubernetes deployment is woken up. (Once the service is ready, the page will auto-refresh.)
+served and the Kubernetes deployment is woken up. Once the service is ready, the page will auto-refresh.
+
+You create `SleepSchedule` resources to define the schedule for any deployment (and optionally it's ingress).
 
 
 ## See it in action
@@ -15,59 +17,43 @@ served and the Kubernetes deployment is woken up. (Once the service is ready, th
 ![Snorlax Demo](./static/demo.gif)
 
 
-## How to deploy to your cluster
+## Usage
 
-Snorlax is packaged as a Helm chart. So create a Helm values file like so:
+1. Install the `snorlax` Helm chart to install the `SleepSchedule` CRD and controller
+    ```bash
+    helm repo add moon-society https://moon-society.github.io/helm-charts
+    helm repo update
+    helm install snorlax moon-society/snorlax --create-namespace --namespace snorlax
+    ```
 
-```yaml
-# values.yaml
+2. Create your `SleepSchedule` resource to define the schedule for the deployment
+    ```yaml
+    # your-app-sleep-schedule.yaml
+    apiVersion: snorlax.moon-society.io/v1beta1
+    kind: SleepSchedule
+    metadata:
+      namespace: your-app-namespace
+      name: your-app
+    spec:
+      wakeTime: '8am'
+      sleepTime: '10pm'
+      timezone: 'America/New_York'
+      deploymentName: your-app-deployment
+      replicaCount: 3
+      ingressName: your-app-ingress
+    ```
 
-deployment:
-  env:
-    # Required
-    - name: REPLICA_COUNT
-      value: "1"
-    - name: NAMESPACE
-      value: "important-namespace"
-    - name: DEPLOYMENT_NAME
-      value: "some-backend-deployment"
-    - name: WAKE_TIME
-      value: "8:00"
-    - name: SLEEP_TIME
-      value: "18:00"
-
-    # Optional
-    # - name: INGRESS_NAME
-    #   value: "some-backend-ingress"
-```
-
-Then deploy it like so:
-
-```bash
-helm install snorlax ./snorlax \
-  --values values.yaml \
-  --namespace important-namespace
-```
-
+3. Apply the `SleepSchedule` resource
+    ```bash
+    kubectl apply -f your-app-sleep-schedule.yaml
+    ```
 
 ## How to develop
 
-If you have Go installed, you can build and run the program in full using:
-
-```bash
-export REPLICA_COUNT=1
-export NAMESPACE=important-namespace
-export DEPLOYMENT_NAME=some-backend-deployment
-export WAKE_TIME=8:00
-export SLEEP_TIME=18:00
-export INGRESS_NAME=some-backend-ingress
-
-make watch-serve
-```
+tbd
 
 ## Future work
 
-- Turn this into a Kubernetes operator with a SleepSchedule CRD
 - Scale entire namespaces
 - Sleep when no requests are received for a certain period of time
 - Add support for custom wake and sleep actions (e.g. hit a webhook on wake)
