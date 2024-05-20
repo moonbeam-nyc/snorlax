@@ -99,9 +99,9 @@ operator-deploy:
 	cd operator && make deploy IMG=$(OPERATOR_IMG)
 
 operator-helmify:
-	cd operator && make helmify
+	cd operator && make helmify IMG=$(OPERATOR_IMG)
 	-rm -rf charts/snorlax
-	mv operator/charts/snorlax ./charts/snorlax
+	mv operator/snorlax ./charts/snorlax
 
 operator-run:
 	cd operator && make run

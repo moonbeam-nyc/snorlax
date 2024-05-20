@@ -47,7 +47,7 @@ type SleepScheduleReconciler struct {
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules/finalizers,verbs=update
-//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;watch;list;create;update
+//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;watch;list;create;update;delete
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;watch;list;scale;update;create;delete
 //+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;watch;list;update;patch
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;watch;list;create;delete
