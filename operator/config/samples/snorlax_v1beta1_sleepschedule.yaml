@@ -10,8 +10,9 @@ metadata:
   namespace: default
   name: sleepschedule-sample
 spec:
-  wakeTime: '08:00'
-  sleepTime: '20:00'
-  deploymentName: nginx-deployment
-  replicaCount: 3
-  # ingressName:
+  wakeTime: 7am
+  sleepTime: 11pm
+  timezone: America/New_York
+  deploymentName: dummy-deployment
+  wakeReplicas: 3
+  ingressName: dummy-ingress

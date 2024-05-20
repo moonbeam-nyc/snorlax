@@ -40,7 +40,7 @@ You create `SleepSchedule` resources to define the schedule for any deployment (
       sleepTime: '10pm'
       timezone: 'America/New_York'
       deploymentName: your-app-deployment
-      replicaCount: 3
+      wakeReplicas: 3
       ingressName: your-app-ingress
     ```
 
