@@ -509,14 +509,30 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 		log.FromContext(ctx).Error(err, "Failed to get Ingress for update")
 		return
 	}
-	pathType := networkingv1.PathTypeImplementationSpecific
+
+	// Get the Ingress class from either the IngressClassName or the Ingress class annotation
+	ingressClass := ""
+	if ingress.Spec.IngressClassName != nil {
+		ingressClass = *ingress.Spec.IngressClassName
+	} else {
+		ingressClass = ingress.Annotations["kubernetes.io/ingress.class"]
+	}
+
+	// Use the right path and path type based on the Ingress class
+	path := "/"
+	pathType := networkingv1.PathTypePrefix
+	if ingressClass == "alb" {
+		path = "/*"
+		pathType = networkingv1.PathTypeImplementationSpecific
+	}
+
 	ingress.Spec.Rules = []networkingv1.IngressRule{
 		{
 			IngressRuleValue: networkingv1.IngressRuleValue{
 				HTTP: &networkingv1.HTTPIngressRuleValue{
 					Paths: []networkingv1.HTTPIngressPath{
 						{
-							Path:     "/",
+							Path:     path,
 							PathType: &pathType,
 							Backend: networkingv1.IngressBackend{
 								Service: &networkingv1.IngressServiceBackend{
