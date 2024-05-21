@@ -66,7 +66,7 @@ func serve() {
 	fileServer := http.FileServer(http.FS(subFS))
 
 	http.HandleFunc("/still-sleeping", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusNoContent)
 		fmt.Fprint(w, "OK")
 	})
 

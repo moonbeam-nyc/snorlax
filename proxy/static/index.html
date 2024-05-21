@@ -63,8 +63,8 @@
   setInterval(function() {
     fetchWithTimeout('/still-sleeping')
       .then(function(response) {
-        if (response.status !== 200) {
-          // If the page is no longer 200, then the snorlax controller has reinstated the original ingress,
+        if (response.status !== 204) {
+          // If the page is no longer 204, then the snorlax controller has reinstated the original ingress,
           // which means the original deployment is awake and ready.
           reloadIf200()
         }
