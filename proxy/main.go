@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper" // Add this line
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -74,20 +76,25 @@ func serve() {
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Set state in configmap
-		k8sClient := createK8sClient()
+		// Print the user agent
+		// fmt.Println("User Agent:", r.UserAgent())
 
-		configMap, err := k8sClient.CoreV1().ConfigMaps(config.Namespace).Get(context.TODO(), config.DataConfigmap, metav1.GetOptions{})
-		if err != nil {
-			log.Fatalf("Failed to get configmap: %v", err)
+		// Signal to the operator that a request was received (if not from a kube-probe)
+		if r.UserAgent() != "ELB-HealthChecker/2.0" {
+			fmt.Println("Received request, signaling wake!")
+			k8sClient := createK8sClient()
+
+			patchData, err := json.Marshal(map[string]interface{}{"data": map[string]string{"received-request": "true"}})
+			if err != nil {
+				log.Fatalf("Failed to marshal configmap: %v", err)
+			}
+
+			_, err = k8sClient.CoreV1().ConfigMaps(config.Namespace).Patch(context.TODO(), config.DataConfigmap, types.MergePatchType, patchData, metav1.PatchOptions{})
+			if err != nil {
+				log.Fatalf("Failed to patch configmap: %v", err)
+			}
 		}
 
-		configMap.Data["received-request"] = "true"
-
-		_, err = k8sClient.CoreV1().ConfigMaps(config.Namespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
-		if err != nil {
-			log.Fatalf("Failed to update configmap: %v", err)
-		}
 		fileServer.ServeHTTP(w, r)
 	})
 

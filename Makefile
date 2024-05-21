@@ -8,7 +8,7 @@ PROXY_IMG = ghcr.io/moon-society/snorlax-proxy:${VERSION}
 
 dev-setup: minikube-delete minikube-start proxy-install operator-crd-install dummy-install
 demo: minikube-reset helm-install-remote dummy-install
-release: proxy-push operator-push operator-helmify helm-package
+release: proxy-release-multiplatform operator-release-multiplatform operator-helmify helm-package
 
 
 ## Local commands
@@ -45,13 +45,18 @@ helm-package:
 	mv ./charts/snorlax/snorlax-*.tgz .
 
 
-## Docker commands
+## Proxy commands
 
 proxy-build:
 	cd proxy && VERSION=$(VERSION) docker compose build snorlax
 
-proxy-push: proxy-build
+proxy-release: proxy-build
 	docker push $(PROXY_IMG)
+
+proxy-release-multiplatform:
+	- docker buildx create --use --name builder
+	docker buildx use builder
+	cd proxy && docker buildx build --platform linux/amd64,linux/arm64 --tag $(PROXY_IMG) --push .
 
 proxy-install: proxy-build
 	docker save $(PROXY_IMG) | (eval $$(minikube docker-env) && docker load)
@@ -75,7 +80,7 @@ minikube-delete:
 ## Dummy app
 
 dummy-install:
-	kubectl apply -f dummy-app/k8s.yaml
+	kubectl apply -f dummy-app
 
 
 ## Operator CRD
@@ -92,8 +97,11 @@ operator-crd-uninstall:
 operator-build:
 	cd operator && make docker-build IMG=$(OPERATOR_IMG)
 
-operator-push: operator-build
+operator-release: operator-build
 	cd operator && make docker-push IMG=$(OPERATOR_IMG)
+
+operator-release-multiplatform:
+	cd operator && make docker-buildx IMG=$(OPERATOR_IMG)
 
 operator-deploy:
 	cd operator && make deploy IMG=$(OPERATOR_IMG)

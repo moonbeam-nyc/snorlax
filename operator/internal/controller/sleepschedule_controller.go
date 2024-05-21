@@ -47,7 +47,7 @@ type SleepScheduleReconciler struct {
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules/finalizers,verbs=update
-//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;watch;list;create;update;delete
+//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;watch;list;create;update;delete;patch
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;watch;list;scale;update;create;delete
 //+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;watch;list;update;patch
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;watch;list;create;delete
@@ -66,7 +66,12 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
-	now := time.Now()
+	location, err := time.LoadLocation(sleepSchedule.Spec.Timezone)
+	if err != nil {
+		log.Error(err, "failed to load time zone")
+		return ctrl.Result{}, err
+	}
+	now := time.Now().In(location)
 
 	// Parse the wake time
 	wakeTime, err := time.Parse("3pm", sleepSchedule.Spec.WakeTime)
@@ -154,9 +159,9 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// Update status based on the actual check
 	sleepSchedule.Status.Awake = awake
-	err = r.Status().Update(ctx, sleepSchedule)
+	err = r.Status().Patch(ctx, sleepSchedule, client.MergeFrom(sleepSchedule.DeepCopy()))
 	if err != nil {
-		log.Error(err, "Failed to update SleepSchedule status")
+		log.Error(err, "Failed to patch SleepSchedule status")
 		return ctrl.Result{}, err
 	}
 
@@ -352,7 +357,7 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 			{
 				APIGroups: []string{""},
 				Resources: []string{"configmaps"},
-				Verbs:     []string{"get", "update"},
+				Verbs:     []string{"get", "update", "patch"},
 			},
 		},
 	}
@@ -455,8 +460,8 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 					Containers: []corev1.Container{
 						{
 							Name:            "snorlax",
-							Image:           "ghcr.io/moon-society/snorlax-proxy:latest",
-							ImagePullPolicy: "IfNotPresent",
+							Image:           "ghcr.io/moon-society/snorlax-proxy:0.2.0",
+							ImagePullPolicy: "Always",
 							Env: []corev1.EnvVar{
 								{
 									Name:  "SNORLAX_DATA_CONFIGMAP",
