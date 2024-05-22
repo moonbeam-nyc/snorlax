@@ -249,13 +249,13 @@ func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, sleepSche
 	ingress := &networkingv1.Ingress{}
 	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: sleepSchedule.Spec.IngressName}, ingress)
 	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to get Ingress for copy")
+		log.FromContext(ctx).Error(err, "failed to get ingress for copy")
 		return
 	}
 
 	ingressYAML, err := yaml.Marshal(ingress)
 	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to marshal Ingress YAML")
+		log.FromContext(ctx).Error(err, "failed to marshal ingress YAML")
 		return
 	}
 
@@ -527,8 +527,10 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 		pathType = networkingv1.PathTypeImplementationSpecific
 	}
 
-	ingress.Spec.Rules = []networkingv1.IngressRule{
-		{
+	newRules := []networkingv1.IngressRule{}
+	for _, rule := range ingress.Spec.Rules {
+		newRule := networkingv1.IngressRule{
+			Host: rule.Host,
 			IngressRuleValue: networkingv1.IngressRuleValue{
 				HTTP: &networkingv1.HTTPIngressRuleValue{
 					Paths: []networkingv1.HTTPIngressPath{
@@ -545,15 +547,17 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 					},
 				},
 			},
-		},
+		}
+		newRules = append(newRules, newRule)
 	}
+
+	ingress.Spec.Rules = newRules
 
 	err = r.Update(ctx, ingress)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to update Ingress to point to Snorlax")
 		return
 	}
-
 }
 
 func int32Ptr(i int32) *int32 {
