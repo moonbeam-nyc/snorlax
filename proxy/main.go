@@ -81,7 +81,7 @@ func serve() {
 
 		// Signal to the operator that a request was received (if not from a kube-probe)
 		if r.UserAgent() != "ELB-HealthChecker/2.0" {
-			fmt.Println("Received request, signaling wake!")
+			fmt.Println("Received wake request:", r)
 			k8sClient := createK8sClient()
 
 			patchData, err := json.Marshal(map[string]interface{}{"data": map[string]string{"received-request": "true"}})

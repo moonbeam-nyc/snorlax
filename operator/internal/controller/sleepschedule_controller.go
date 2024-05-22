@@ -35,6 +35,7 @@ import (
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -612,6 +613,7 @@ func (r *SleepScheduleReconciler) loadIngressCopy(ctx context.Context, sleepSche
 
 func (r *SleepScheduleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 5}).
 		For(&snorlaxv1beta1.SleepSchedule{}).
 		Owns(&corev1.ConfigMap{}).
 		Complete(r)
