@@ -261,7 +261,7 @@ func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, sleepSche
 
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      objectName + "-" + sleepSchedule.Spec.IngressName,
+			Name:      objectName + "-ingress-copy",
 			Namespace: sleepSchedule.Namespace,
 		},
 		Data: map[string]string{
@@ -568,7 +568,7 @@ func (r *SleepScheduleReconciler) loadIngressCopy(ctx context.Context, sleepSche
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 
 	configMap := &corev1.ConfigMap{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName + "-" + sleepSchedule.Spec.IngressName}, configMap)
+	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName + "-ingress-copy"}, configMap)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to get ConfigMap")
 		return err
