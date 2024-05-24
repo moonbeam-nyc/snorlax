@@ -9,7 +9,7 @@ Snorlax is a Kubernetes operator which wakes and sleeps another Kubernetes deplo
 And if a request is received when the deployment is sleeping, a cute sleeping Snorlax page is
 served and the Kubernetes deployment is woken up. Once the service is ready, the page will auto-refresh.
 
-You create `SleepSchedule` resources to define the schedule for any deployment (and optionally it's ingress).
+You create `SleepSchedule` resources to define the schedule for any deployment (and optionally its ingress).
 
 
 ## See it in action
