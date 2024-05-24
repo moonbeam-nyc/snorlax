@@ -29,11 +29,11 @@ spec:
     spec:
       containers:
         - name: dummy
-          # image: nginx:latest
-          image: okteto/example-react
+          image: nginx:latest
+          # image: okteto/example-react
           ports:
-            # - containerPort: 80
-            - containerPort: 9000
+            - containerPort: 80
+            # - containerPort: 9000
 #
 ---
 
@@ -81,5 +81,5 @@ spec:
   ports:
     - protocol: TCP
       port: 80
-      # targetPort: 80
-      targetPort: 9000
+      targetPort: 80
+      # targetPort: 9000
