@@ -28,7 +28,7 @@ You create `SleepSchedule` resources to define the schedule for any deployment (
 
 2. Create your `SleepSchedule` resource to define the schedule for the deployment
     ```yaml
-    # your-app-sleep-schedule.yaml
+    # filename: your-app-sleep-schedule.yaml
 
     apiVersion: snorlax.moon-society.io/v1beta1
     kind: SleepSchedule
@@ -36,11 +36,15 @@ You create `SleepSchedule` resources to define the schedule for any deployment (
       namespace: your-app-namespace
       name: your-app
     spec:
-      wakeTime: '8am'
-      sleepTime: '10pm'
+      wakeTime: '8:00am'
+      sleepTime: '10:00pm'
       timezone: 'America/New_York'
       deploymentName: your-app-deployment
       wakeReplicas: 3
+
+      # (optional) the ingress to update and point to the snorlax wake proxy,
+      # which wakes your deployment when a request is received while it's
+      # sleeping.
       ingressName: your-app-ingress
     ```
 
@@ -48,6 +52,14 @@ You create `SleepSchedule` resources to define the schedule for any deployment (
     ```bash
     kubectl apply -f your-app-sleep-schedule.yaml
     ```
+
+## Try it yourself locally
+
+(Requires `minikube` and `helm` to be installed)
+
+Run `make demo` to create a Minikube cluster, install the latest Helm release of `snorlax`, and deploy a dummy deployment, service, ingress, and sleep schedule.
+
+Once you deploy the resources, you can update the sleep schedule with `kubectl edit sleepschedule dummy`.
 
 ## How to develop
 

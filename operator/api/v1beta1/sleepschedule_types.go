@@ -27,16 +27,30 @@ type SleepScheduleSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// The time that the deployment should wake up
 	// +kubebuilder:validation:Required
 	WakeTime string `json:"wakeTime"`
+
+	// The time that the deployment should sleep
 	// +kubebuilder:validation:Required
 	SleepTime string `json:"sleepTime"`
+
+	// The timezone that the times above should be based in
 	// +kubebuilder:validation:Required
 	Timezone string `json:"timezone"`
 
+	// The name of the deployment that should be slept/woken
+	// +kubebuilder:validation:Required
 	DeploymentName string `json:"deploymentName,omitempty"`
-	WakeReplicas   int    `json:"wakeReplicas,omitempty"`
-	IngressName    string `json:"ingressName,omitempty"`
+
+	// The number of replicas that the deployment with it wakes
+	// +kubebuilder:validation:Required
+	WakeReplicas int `json:"wakeReplicas,omitempty"`
+
+	// The name of the ingress that will be updated to point to the snorlax proxy
+	// which wakes the deployment when a requrest is received. A copy of the original
+	// is stored in a configmap.
+	IngressName string `json:"ingressName,omitempty"`
 }
 
 // SleepScheduleStatus defines the observed state of SleepSchedule
