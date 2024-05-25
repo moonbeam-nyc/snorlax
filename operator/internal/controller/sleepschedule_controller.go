@@ -71,7 +71,7 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 	location, err := time.LoadLocation(sleepSchedule.Spec.Timezone)
 	if err != nil {
-		log.Error(err, "failed to load time zone")
+		log.Error(err, "failed to load timezone")
 		return ctrl.Result{}, err
 	}
 	now := time.Now().In(location)
@@ -121,6 +121,14 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
+	// Update status based on the actual check
+	sleepSchedule.Status.Awake = awake
+	err = r.Status().Patch(ctx, sleepSchedule, client.MergeFrom(sleepSchedule.DeepCopy()))
+	if err != nil {
+		log.Error(err, "failed to patch SleepSchedule status")
+		return ctrl.Result{}, err
+	}
+
 	// Check if the instance is marked to be deleted, which is
 	// indicated by the deletion timestamp being set.
 	markedForDeletion := sleepSchedule.GetDeletionTimestamp() != nil
@@ -151,7 +159,7 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if err == nil {
 			err = r.Delete(ctx, configMap)
 			if err != nil {
-				log.Error(err, "Failed to delete proxy-data ConfigMap")
+				log.Error(err, "failed to delete proxy-data configmap")
 				return ctrl.Result{}, err
 			}
 		}
@@ -184,14 +192,6 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		r.wake(ctx, sleepSchedule)
 	}
 
-	// Update status based on the actual check
-	sleepSchedule.Status.Awake = awake
-	err = r.Status().Patch(ctx, sleepSchedule, client.MergeFrom(sleepSchedule.DeepCopy()))
-	if err != nil {
-		log.Error(err, "Failed to patch SleepSchedule status")
-		return ctrl.Result{}, err
-	}
-
 	// Requeue to check again in 10 seconds
 	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 }
@@ -199,20 +199,19 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 func (r *SleepScheduleReconciler) finalizeSleepSchedule(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
 	log := log.FromContext(ctx)
 
-	// TODO: Add the cleanup steps that the operator
-	// needs to do before the CR can be deleted. Examples
-	// of finalizers include performing backups and deleting
-	// resources that are not owned by this CR, like a PVC.
-	log.Info("Finalizing the SleepSchedule, waking the deployment")
+	log.Info("finalizing the sleepschedule, waking the deployment")
 
-	err := r.wake(ctx, sleepSchedule)
-	if err != nil {
-		return err
+	// Wake the environment
+	if !sleepSchedule.Status.Awake {
+		err := r.wake(ctx, sleepSchedule)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Remove the finalizer from the SleepSchedule
 	controllerutil.RemoveFinalizer(sleepSchedule, finalizer)
-	err = r.Update(context.TODO(), sleepSchedule)
+	err := r.Update(context.TODO(), sleepSchedule)
 	if err != nil {
 		return err
 	}
@@ -446,6 +445,7 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 	if err != nil && client.IgnoreNotFound(err) != nil {
 		log.FromContext(ctx).Error(err, "Failed to get existing role binding")
 		return
+
 	}
 	if err != nil && client.IgnoreNotFound(err) == nil {
 		err = r.Create(ctx, roleBinding)
