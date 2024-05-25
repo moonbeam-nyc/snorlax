@@ -40,16 +40,25 @@ spec:
           spec:
             properties:
               deploymentName:
+                description: The name of the deployment that will be slept/woken
                 type: string
               ingressName:
+                description: |-
+                  The name of the ingress that will be updated to point to the snorlax proxy
+                  which wakes the deployment when a requrest is received. A copy of the original
+                  is stored in a configmap.
                 type: string
               sleepTime:
+                description: The time that the deployment will start sleeping
                 type: string
               timezone:
+                description: The timezone that the input times are based in
                 type: string
               wakeReplicas:
+                description: The number of replicas that the deployment with it wakes
                 type: integer
               wakeTime:
+                description: The time that the deployment will wake up
                 type: string
             required:
             - sleepTime
