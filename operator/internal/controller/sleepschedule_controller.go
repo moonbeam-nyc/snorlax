@@ -36,6 +36,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -44,6 +45,8 @@ type SleepScheduleReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
+
+const finalizer = "finalizer.snorlax.moon-society.io"
 
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules/status,verbs=get;update;patch
@@ -75,14 +78,14 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	now := time.Now().In(location)
 
 	// Parse the wake time
-	wakeTime, err := time.Parse("3pm", sleepSchedule.Spec.WakeTime)
+	wakeTime, err := time.Parse("10:10pm", sleepSchedule.Spec.WakeTime)
 	if err != nil {
 		log.Error(err, "failed to parse wake time")
 		return ctrl.Result{}, err
 	}
 
 	// Parse the sleep time
-	sleepTime, err := time.Parse("3pm", sleepSchedule.Spec.SleepTime)
+	sleepTime, err := time.Parse("10:10pm", sleepSchedule.Spec.SleepTime)
 	if err != nil {
 		log.Error(err, "failed to parse sleep time")
 		return ctrl.Result{}, err
@@ -103,6 +106,36 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	wakeDatetime := time.Date(now.Year(), now.Month(), now.Day(), wakeTime.Hour(), wakeTime.Minute(), 0, 0, timezone)
 	sleepDatetime := time.Date(now.Year(), now.Month(), now.Day(), sleepTime.Hour(), sleepTime.Minute(), 0, 0, timezone)
+
+	awake, err := r.isAppAwake(ctx, sleepSchedule)
+	if err != nil {
+		log.Error(err, "Failed to determine if the application is awake")
+		return ctrl.Result{}, err
+	}
+
+	// Add finalizer if it doesn't exist
+	if !controllerutil.ContainsFinalizer(sleepSchedule, finalizer) {
+		controllerutil.AddFinalizer(sleepSchedule, finalizer)
+		err = r.Update(ctx, sleepSchedule)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Check if the instance is marked to be deleted, which is
+	// indicated by the deletion timestamp being set.
+	markedForDeletion := sleepSchedule.GetDeletionTimestamp() != nil
+	if markedForDeletion {
+		if controllerutil.ContainsFinalizer(sleepSchedule, finalizer) {
+			// Run finalization logic for finalizer. If the
+			// finalization logic fails, don't remove the finalizer so
+			// that we can retry during the next reconciliation.
+			if err := r.finalizeSleepSchedule(ctx, sleepSchedule); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{}, nil
+	}
 
 	// Determine if the app should be awake or asleep
 	var shouldSleep bool
@@ -130,12 +163,6 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// fmt.Println("wakeDatetime:", wakeDatetime)
 	// fmt.Println("sleepDatetime:", sleepDatetime)
 	// fmt.Print("shouldSleep:", shouldSleep, "\n\n")
-
-	awake, err := r.isAppAwake(ctx, sleepSchedule)
-	if err != nil {
-		log.Error(err, "Failed to determine if the application is awake")
-		return ctrl.Result{}, err
-	}
 
 	// Check if the configmaps request-received key was set to "true"
 	var wakeRequestReceived bool
@@ -168,6 +195,30 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// Requeue to check again in 10 seconds
 	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+}
+
+func (r *SleepScheduleReconciler) finalizeSleepSchedule(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
+	log := log.FromContext(ctx)
+
+	// TODO: Add the cleanup steps that the operator
+	// needs to do before the CR can be deleted. Examples
+	// of finalizers include performing backups and deleting
+	// resources that are not owned by this CR, like a PVC.
+	log.Info("Finalizing the SleepSchedule, waking the deployment")
+
+	err := r.wake(ctx, sleepSchedule)
+	if err != nil {
+		return err
+	}
+
+	// Remove the finalizer from the SleepSchedule
+	controllerutil.RemoveFinalizer(sleepSchedule, finalizer)
+	err = r.Update(context.TODO(), sleepSchedule)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) (bool, error) {

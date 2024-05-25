@@ -4,8 +4,8 @@ metadata:
   namespace: default
   name: dummy
 spec:
-  wakeTime: '8am'
-  sleepTime: '2pm'
+  wakeTime: '8:00am'
+  sleepTime: '2:00pm'
   timezone: 'America/New_York'
   deploymentName: dummy-deployment
   ingressName: dummy-ingress
