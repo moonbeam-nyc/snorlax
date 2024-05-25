@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -78,14 +77,14 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	now := time.Now().In(location)
 
 	// Parse the wake time
-	wakeTime, err := time.Parse("10:10pm", sleepSchedule.Spec.WakeTime)
+	wakeTime, err := time.Parse("3:04pm", sleepSchedule.Spec.WakeTime)
 	if err != nil {
 		log.Error(err, "failed to parse wake time")
 		return ctrl.Result{}, err
 	}
 
 	// Parse the sleep time
-	sleepTime, err := time.Parse("10:10pm", sleepSchedule.Spec.SleepTime)
+	sleepTime, err := time.Parse("3:04pm", sleepSchedule.Spec.SleepTime)
 	if err != nil {
 		log.Error(err, "failed to parse sleep time")
 		return ctrl.Result{}, err
@@ -320,6 +319,8 @@ func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, sleepSche
 		},
 	}
 
+	ctrl.SetControllerReference(sleepSchedule, configMap, r.Scheme)
+
 	if err := r.Create(ctx, configMap); err != nil {
 		if err := r.Update(ctx, configMap); err != nil {
 			log.FromContext(ctx).Error(err, "Failed to create or update ConfigMap")
@@ -330,21 +331,11 @@ func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, sleepSche
 func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 
-	ownerRef := metav1.OwnerReference{
-		APIVersion:         "snorlax.moon-society.io/v1beta1",
-		Kind:               "SleepSchedule",
-		Name:               sleepSchedule.Name,
-		UID:                sleepSchedule.UID,
-		Controller:         pointer.Bool(true),
-		BlockOwnerDeletion: pointer.Bool(true),
-	}
-
 	// Create the snorlax service for this ingress
 	snorlaxService := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            objectName,
-			Namespace:       sleepSchedule.Namespace,
-			OwnerReferences: []metav1.OwnerReference{ownerRef},
+			Name:      objectName,
+			Namespace: sleepSchedule.Namespace,
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{
@@ -359,6 +350,7 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 			},
 		},
 	}
+	ctrl.SetControllerReference(sleepSchedule, snorlaxService, r.Scheme)
 
 	// Check if the service already exists
 	existingService := &corev1.Service{}
@@ -380,11 +372,12 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 	// Create service account
 	serviceAccount := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            objectName,
-			Namespace:       sleepSchedule.Namespace,
-			OwnerReferences: []metav1.OwnerReference{ownerRef},
+			Name:      objectName,
+			Namespace: sleepSchedule.Namespace,
 		},
 	}
+	ctrl.SetControllerReference(sleepSchedule, serviceAccount, r.Scheme)
+
 	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, serviceAccount)
 	if err != nil && client.IgnoreNotFound(err) != nil {
 		log.FromContext(ctx).Error(err, "Failed to get existing service account")
@@ -401,9 +394,8 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 	// Create role
 	role := &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            objectName,
-			Namespace:       sleepSchedule.Namespace,
-			OwnerReferences: []metav1.OwnerReference{ownerRef},
+			Name:      objectName,
+			Namespace: sleepSchedule.Namespace,
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -413,6 +405,9 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 			},
 		},
 	}
+
+	ctrl.SetControllerReference(sleepSchedule, role, r.Scheme)
+
 	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, role)
 	if err != nil && client.IgnoreNotFound(err) != nil {
 		log.FromContext(ctx).Error(err, "Failed to get existing role")
@@ -428,9 +423,8 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 	// Create role binding
 	roleBinding := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            objectName,
-			Namespace:       sleepSchedule.Namespace,
-			OwnerReferences: []metav1.OwnerReference{ownerRef},
+			Name:      objectName,
+			Namespace: sleepSchedule.Namespace,
 		},
 		Subjects: []rbacv1.Subject{
 			{
@@ -445,6 +439,9 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 			APIGroup: "rbac.authorization.k8s.io",
 		},
 	}
+
+	ctrl.SetControllerReference(sleepSchedule, roleBinding, r.Scheme)
+
 	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, roleBinding)
 	if err != nil && client.IgnoreNotFound(err) != nil {
 		log.FromContext(ctx).Error(err, "Failed to get existing role binding")
@@ -461,14 +458,15 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 	// Create the configmap for proxy data
 	proxyDataConfigMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            fmt.Sprintf("%s-proxy-data", objectName),
-			Namespace:       sleepSchedule.Namespace,
-			OwnerReferences: []metav1.OwnerReference{ownerRef},
+			Name:      fmt.Sprintf("%s-proxy-data", objectName),
+			Namespace: sleepSchedule.Namespace,
 		},
 		Data: map[string]string{
 			"received-request": "false",
 		},
 	}
+
+	ctrl.SetControllerReference(sleepSchedule, proxyDataConfigMap, r.Scheme)
 
 	// Check if the configmap already exists
 	existingConfigMap := &corev1.ConfigMap{}
@@ -490,9 +488,8 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 	// Deploy Snorlax container and service
 	snorlaxDeployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            objectName,
-			Namespace:       sleepSchedule.Namespace,
-			OwnerReferences: []metav1.OwnerReference{ownerRef},
+			Name:      objectName,
+			Namespace: sleepSchedule.Namespace,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: int32Ptr(1),
@@ -534,6 +531,8 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 			},
 		},
 	}
+
+	ctrl.SetControllerReference(sleepSchedule, snorlaxDeployment, r.Scheme)
 
 	existingDeployment := &appsv1.Deployment{}
 	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, existingDeployment)

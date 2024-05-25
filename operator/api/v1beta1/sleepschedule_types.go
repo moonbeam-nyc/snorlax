@@ -27,19 +27,19 @@ type SleepScheduleSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// The time that the deployment should wake up
+	// The time that the deployment will wake up
 	// +kubebuilder:validation:Required
 	WakeTime string `json:"wakeTime"`
 
-	// The time that the deployment should sleep
+	// The time that the deployment will start sleeping
 	// +kubebuilder:validation:Required
 	SleepTime string `json:"sleepTime"`
 
-	// The timezone that the times above should be based in
+	// The timezone that the input times are based in
 	// +kubebuilder:validation:Required
 	Timezone string `json:"timezone"`
 
-	// The name of the deployment that should be slept/woken
+	// The name of the deployment that will be slept/woken
 	// +kubebuilder:validation:Required
 	DeploymentName string `json:"deploymentName,omitempty"`
 
