@@ -2,7 +2,7 @@
   <img src="./proxy/static/logo-small.png" alt="Logo" width="300">
 </div>
 
-# Snorlax
+# Snorlax · [![Build Docker image](https://github.com/moon-society/snorlax/actions/workflows/build-docker-image.yaml/badge.svg)](https://github.com/moon-society/snorlax/actions/workflows/build-docker-image.yaml)
 
 Snorlax is a Kubernetes operator which wakes and sleeps another Kubernetes deployment on a schedule.
 
@@ -71,7 +71,7 @@ hours each night and on weekends, that means they'll sleep ~55% of the month.
 
 ## Other features
 
-- **Ingress controller awareness**: Snorlax determines which ingress controller you're running so it can create the correct ingress routes
+- **Ingress controller awareness**: Snorlax determines which ingress controller you're running so it can create the correct ingress routes for sleep.
 
 ## Try it yourself locally
 
@@ -106,3 +106,11 @@ make operator-run
 - Add support for cron-style schedules (e.g. `0 8 * * *`)
 - Add button to manually wake up the deployment (instead of auto-waking on request)
 - Custom image/gif for sleeping page
+
+## Reach out
+
+Wondering how to best use Snorlax? Have questions or ideas for new features?
+
+I'd love to hear, and maybe even build it! Reach out to me at:
+
+<img src="./proxy/static/readme-email-address.png" alt="Contact" width="300">
