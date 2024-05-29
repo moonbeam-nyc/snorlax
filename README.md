@@ -71,15 +71,20 @@ hours each night and on weekends, that means they'll sleep ~55% of the month.
 
 ## Other features
 
-- Ingress controller awareness: Snorlax determines which ingress controller you're running so it can create the correct ingress routes
+- **Ingress controller awareness**: Snorlax determines which ingress controller you're running so it can create the correct ingress routes
 
 ## Try it yourself locally
 
 (Requires `minikube` and `helm` to be installed)
 
-Run `make demo` to create a Minikube cluster, install the latest Helm release of `snorlax`, and deploy a dummy deployment, service, ingress, and sleep schedule.
+- Run `make demo` to:
+  - create a Minikube cluster
+  - install the latest Helm release of `snorlax`
+  - deploy a dummy deployment, service, ingress, and sleep schedule
+- In another terminal, run `minikube tunnel` to proxy `localhost` to your Minikube cluster ingress service.
+- Go to [http://localhost](http://localhost) to see either the sleeping page or the dummy deployment (depending on the time of day).
 
-Once you deploy the resources, you can update the sleep schedule with `kubectl edit sleepschedule dummy`.
+You can also then try updating the sleep schedule with `kubectl edit sleepschedule dummy`.
 
 ## How to develop
 
