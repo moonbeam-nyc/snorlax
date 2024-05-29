@@ -14,12 +14,15 @@ You create `SleepSchedule` resources to define the schedule for any deployment (
 
 ## Why Snorlax?
 
-Sleeping your environments means:
+Sleeping your environments is the equivalent of turning off the lights at night.
 
-- **Cost savings**: Scale down your environments when they're not needed (e.g. overnight)
-  - If you sleep your deployments for 8 hours a day and weekends, you could save ~55% on your cloud bill (for those resources)
-- **Security**: Reduce the attack surface of your deployments when they're not needed
-- **Environmentally friendly**: Reduce the energy consumption of your deployments when they're not needed
+- **Cost savings**: Scale down your environments when they're not needed (e.g. overnight), freeing up cloud resources
+- **Security**: Reduce the attack surface of your infrastructure when deployments are sleeping
+- **Environmentally responsible**: Reduce the energy consumption of your infrastructure
+
+As a common example, if you sleep all of your staging/ephemeral deployments 8
+hours each night and on weekends, that means they'll sleep ~55% of the month.
+**That means ~55% savings on your cloud bill for those resources.**
 
 
 ## See it in action
@@ -66,6 +69,10 @@ Sleeping your environments means:
     kubectl apply -f your-app-sleep-schedule.yaml
     ```
 
+## Other features
+
+- Ingress controller awareness: Snorlax determines which ingress controller you're running so it can create the correct ingress routes
+
 ## Try it yourself locally
 
 (Requires `minikube` and `helm` to be installed)
@@ -93,3 +100,4 @@ make operator-run
 - Add support for custom wake and sleep actions (e.g. hit a webhook on wake)
 - Add support for cron-style schedules (e.g. `0 8 * * *`)
 - Add button to manually wake up the deployment (instead of auto-waking on request)
+- Custom image/gif for sleeping page
