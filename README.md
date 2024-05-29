@@ -12,6 +12,16 @@ served and the Kubernetes deployment is woken up. Once the service is ready, the
 You create `SleepSchedule` resources to define the schedule for any deployment (and optionally its ingress).
 
 
+## Why Snorlax?
+
+Sleeping your environments means:
+
+- **Cost savings**: Scale down your environments when they're not needed (e.g. overnight)
+  - If you sleep your deployments for 8 hours a day and weekends, you could save ~55% on your cloud bill (for those resources)
+- **Security**: Reduce the attack surface of your deployments when they're not needed
+- **Environmentally friendly**: Reduce the energy consumption of your deployments when they're not needed
+
+
 ## See it in action
 
 ![Snorlax Demo](./proxy/static/demo.gif)
@@ -36,11 +46,14 @@ You create `SleepSchedule` resources to define the schedule for any deployment (
       namespace: your-app-namespace
       name: your-app
     spec:
+      # Required fields
       wakeTime: '8:00am'
       sleepTime: '10:00pm'
-      timezone: 'America/New_York'
       deploymentName: your-app-deployment
       wakeReplicas: 3
+
+      # (optional) the timezone to use for the input times above
+      timezone: 'America/New_York'
 
       # (optional) the ingress to update and point to the snorlax wake proxy,
       # which wakes your deployment when a request is received while it's
