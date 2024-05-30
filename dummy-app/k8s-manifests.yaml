@@ -5,7 +5,7 @@ metadata:
   name: dummy
 spec:
   wakeTime: '10:00am'
-  sleepTime: '10:05am'
+  sleepTime: '10:01am'
   timezone: 'America/New_York'
   deploymentName: dummy-deployment
   ingressName: dummy-ingress
