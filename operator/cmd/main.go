@@ -34,8 +34,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	snorlaxv1beta1 "moon-society/snorlax/api/v1beta1"
-	"moon-society/snorlax/internal/controller"
+	snorlaxv1beta1 "moonbeam-nyc/snorlax/api/v1beta1"
+	"moonbeam-nyc/snorlax/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -104,7 +104,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "0bb38289.moon-society.io",
+		LeaderElectionID:       "0bb38289.moonbeam.nyc",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly

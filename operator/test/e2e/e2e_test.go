@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"moon-society/snorlax/test/utils"
+	"moonbeam-nyc/snorlax/test/utils"
 )
 
 const namespace = "operator-system"

@@ -2,7 +2,7 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
-- bases/snorlax.moon-society.io_sleepschedules.yaml
+- bases/snorlax.moonbeam.nyc_sleepschedules.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:

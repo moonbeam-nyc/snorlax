@@ -32,7 +32,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	snorlaxv1beta1 "moon-society/snorlax/api/v1beta1"
+	snorlaxv1beta1 "moonbeam-nyc/snorlax/api/v1beta1"
 	//+kubebuilder:scaffold:imports
 )
 

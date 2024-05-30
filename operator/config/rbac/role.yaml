@@ -76,7 +76,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - snorlax.moon-society.io
+  - snorlax.moonbeam.nyc
   resources:
   - sleepschedules
   verbs:
@@ -88,13 +88,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - snorlax.moon-society.io
+  - snorlax.moonbeam.nyc
   resources:
   - sleepschedules/finalizers
   verbs:
   - update
 - apiGroups:
-  - snorlax.moon-society.io
+  - snorlax.moonbeam.nyc
   resources:
   - sleepschedules/status
   verbs:

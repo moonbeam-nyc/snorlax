@@ -1,7 +1,7 @@
 VERSION = 0.2.0
-BUNDLE_IMG = ghcr.io/moon-society/snorlax-operator-bundle:${VERSION}
-OPERATOR_IMG = ghcr.io/moon-society/snorlax-operator:${VERSION}
-PROXY_IMG = ghcr.io/moon-society/snorlax-proxy:${VERSION}
+BUNDLE_IMG = ghcr.io/moonbeam-nyc/snorlax-operator-bundle:${VERSION}
+OPERATOR_IMG = ghcr.io/moonbeam-nyc/snorlax-operator:${VERSION}
+PROXY_IMG = ghcr.io/moonbeam-nyc/snorlax-proxy:${VERSION}
 
 
 ## Workflows
@@ -31,9 +31,9 @@ helm-install-local:
 		--namespace snorlax
 
 helm-install-remote:
-	helm repo add moon-society https://moon-society.github.io/helm-charts
+	helm repo add moonbeam-nyc https://moonbeam-nyc.github.io/helm-charts
 	helm repo update
-	helm install snorlax moon-society/snorlax \
+	helm install snorlax moonbeam-nyc/snorlax \
 		--create-namespace \
 		--namespace snorlax
 

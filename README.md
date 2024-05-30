@@ -2,7 +2,7 @@
   <img src="./proxy/static/logo-small.png" alt="Logo" width="300">
 </div>
 
-# Snorlax · [![Build Docker image](https://github.com/moon-society/snorlax/actions/workflows/build-docker-image.yaml/badge.svg)](https://github.com/moon-society/snorlax/actions/workflows/build-docker-image.yaml)
+# Snorlax · [![Build Docker image](https://github.com/moonbeam-nyc/snorlax/actions/workflows/build-docker-image.yaml/badge.svg)](https://github.com/moonbeam-nyc/snorlax/actions/workflows/build-docker-image.yaml)
 
 Snorlax is a Kubernetes operator which wakes and sleeps another Kubernetes deployment on a schedule.
 
@@ -34,16 +34,16 @@ hours each night and on weekends, that means they'll sleep ~55% of the month.
 
 1. Install the `snorlax` Helm chart to install the `SleepSchedule` CRD and controller
     ```bash
-    helm repo add moon-society https://moon-society.github.io/helm-charts
+    helm repo add moonbeam-nyc https://moonbeam-nyc.github.io/helm-charts
     helm repo update
-    helm install snorlax moon-society/snorlax --create-namespace --namespace snorlax
+    helm install snorlax moonbeam-nyc/snorlax --create-namespace --namespace snorlax
     ```
 
 2. Create your `SleepSchedule` resource to define the schedule for the deployment
     ```yaml
     # filename: your-app-sleep-schedule.yaml
 
-    apiVersion: snorlax.moon-society.io/v1beta1
+    apiVersion: snorlax.moonbeam.nyc/v1beta1
     kind: SleepSchedule
     metadata:
       namespace: your-app-namespace

@@ -1,4 +1,4 @@
-apiVersion: snorlax.moon-society.io/v1beta1
+apiVersion: snorlax.moonbeam.nyc/v1beta1
 kind: SleepSchedule
 metadata:
   namespace: default

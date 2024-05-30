@@ -12,7 +12,7 @@ metadata:
   name: sleepschedule-editor-role
 rules:
 - apiGroups:
-  - snorlax.moon-society.io
+  - snorlax.moonbeam.nyc
   resources:
   - sleepschedules
   verbs:
@@ -24,7 +24,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - snorlax.moon-society.io
+  - snorlax.moonbeam.nyc
   resources:
   - sleepschedules/status
   verbs:

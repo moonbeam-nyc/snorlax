@@ -1,4 +1,4 @@
-module moon-society/snorlax
+module moonbeam-nyc/snorlax
 
 go 1.22.1
 

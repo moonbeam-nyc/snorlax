@@ -20,7 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	snorlaxv1beta1 "moon-society/snorlax/api/v1beta1"
+	snorlaxv1beta1 "moonbeam-nyc/snorlax/api/v1beta1"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -45,11 +45,11 @@ type SleepScheduleReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-const finalizer = "finalizer.snorlax.moon-society.io"
+const finalizer = "finalizer.snorlax.moonbeam.nyc"
 
-//+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=snorlax.moon-society.io,resources=sleepschedules/finalizers,verbs=update
+//+kubebuilder:rbac:groups=snorlax.moonbeam.nyc,resources=sleepschedules,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=snorlax.moonbeam.nyc,resources=sleepschedules/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=snorlax.moonbeam.nyc,resources=sleepschedules/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;watch;list;create;update;delete;patch
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;watch;list;scale;update;create;delete
 //+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;watch;list;update;patch
@@ -509,7 +509,7 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 					Containers: []corev1.Container{
 						{
 							Name:            "snorlax",
-							Image:           "ghcr.io/moon-society/snorlax-proxy:0.2.0",
+							Image:           "ghcr.io/moonbeam-nyc/snorlax-proxy:0.2.0",
 							ImagePullPolicy: "Always",
 							Env: []corev1.EnvVar{
 								{

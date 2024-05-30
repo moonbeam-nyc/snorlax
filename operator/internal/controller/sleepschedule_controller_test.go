@@ -27,7 +27,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	snorlaxv1beta1 "moon-society/snorlax/api/v1beta1"
+	snorlaxv1beta1 "moonbeam-nyc/snorlax/api/v1beta1"
 )
 
 var _ = Describe("SleepSchedule Controller", func() {
