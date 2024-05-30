@@ -4,7 +4,7 @@
 
 # Snorlax · [![Build Docker image](https://github.com/moonbeam-nyc/snorlax/actions/workflows/build-docker-image.yaml/badge.svg)](https://github.com/moonbeam-nyc/snorlax/actions/workflows/build-docker-image.yaml)
 
-Snorlax is a Kubernetes operator which wakes and sleeps another Kubernetes deployment on a schedule.
+Snorlax is a Kubernetes operator which wakes and sleeps a Kubernetes deployment on a schedule.
 
 And if a request is received when the deployment is sleeping, a cute sleeping Snorlax page is
 served and the Kubernetes deployment is woken up. Once the service is ready, the page will auto-refresh.
@@ -81,7 +81,7 @@ hours each night and on weekends, that means they'll sleep ~55% of the month.
   - create a Minikube cluster
   - install the latest Helm release of `snorlax`
   - deploy a dummy deployment, service, ingress, and sleep schedule
-- In another terminal, run `minikube tunnel` to proxy `localhost` to your Minikube cluster ingress service.
+  - starts the minikube tunel to proxy `localhost` to your Minikube cluster ingress service (you'll need to enter your password)
 - Go to [http://localhost](http://localhost) to see either the sleeping page or the dummy deployment (depending on the time of day).
 
 You can also then try updating the sleep schedule with `kubectl edit sleepschedule dummy`.
@@ -111,6 +111,6 @@ make operator-run
 
 Wondering how to best use Snorlax? Have questions or ideas for new features?
 
-I'd love to hear, and maybe even build it! Reach out to me at:
+I'd love to hear, and maybe even build them! Reach out to me at:
 
 <img src="./proxy/static/readme-email-address.png" alt="Contact" width="300">

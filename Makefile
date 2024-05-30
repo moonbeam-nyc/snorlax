@@ -31,9 +31,9 @@ helm-install-local:
 		--namespace snorlax
 
 helm-install-remote:
-	helm repo add moonbeam-nyc https://moonbeam-nyc.github.io/helm-charts
+	helm repo add moonbeam https://moonbeam-nyc.github.io/helm-charts
 	helm repo update
-	helm install snorlax moonbeam-nyc/snorlax \
+	helm install snorlax moonbeam/snorlax \
 		--create-namespace \
 		--namespace snorlax
 
