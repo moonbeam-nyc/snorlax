@@ -34,9 +34,9 @@ hours each night and on weekends, that means they'll sleep ~55% of the month.
 
 1. Install the `snorlax` Helm chart to install the `SleepSchedule` CRD and controller
     ```bash
-    helm repo add moonbeam-nyc https://moonbeam-nyc.github.io/helm-charts
+    helm repo add moonbeam https://moonbeam-nyc.github.io/helm-charts
     helm repo update
-    helm install snorlax moonbeam-nyc/snorlax --create-namespace --namespace snorlax
+    helm install snorlax moonbeam/snorlax --create-namespace --namespace snorlax
     ```
 
 2. Create your `SleepSchedule` resource to define the schedule for the deployment
