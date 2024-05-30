@@ -7,7 +7,7 @@ PROXY_IMG = ghcr.io/moonbeam-nyc/snorlax-proxy:${VERSION}
 ## Workflows
 
 dev-setup: minikube-delete minikube-start proxy-install operator-crd-install dummy-install
-demo: minikube-reset helm-install-remote dummy-install
+demo: minikube-reset helm-install-remote dummy-install minikube-tunnel
 release: proxy-release-multiplatform operator-release-multiplatform operator-helmify helm-package
 
 
@@ -75,6 +75,9 @@ minikube-start:
 
 minikube-delete:
 	minikube delete
+
+minikube-tunnel:
+	minikube tunnel
 
 
 ## Dummy app
