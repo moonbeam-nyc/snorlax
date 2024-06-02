@@ -97,7 +97,7 @@ make dev-setup
 
 Then make your updates and run the operator:
 ```bash
-make operator-run
+make dev-run
 ```
 
 ## Future work
