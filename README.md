@@ -4,9 +4,9 @@
 
 # Snorlax · [![Build Docker image](https://github.com/moonbeam-nyc/snorlax/actions/workflows/build-docker-image.yaml/badge.svg)](https://github.com/moonbeam-nyc/snorlax/actions/workflows/build-docker-image.yaml)
 
-Snorlax is a Kubernetes operator which wakes and sleeps a Kubernetes deployment on a schedule.
+Snorlax is a Kubernetes operator that wakes and sleeps a Kubernetes deployment on a schedule.
 
-And if a request is received when the deployment is sleeping, a cute sleeping Snorlax page is
+If a request is received when the deployment is sleeping, a cute sleeping Snorlax page is
 served and the Kubernetes deployment is woken up. Once the service is ready, the page will auto-refresh.
 
 You create `SleepSchedule` resources to define the schedule for any deployment (and optionally its ingress).
@@ -20,8 +20,8 @@ Sleeping your environments is the equivalent of turning off the lights at night.
 - **Security**: Reduce the attack surface of your infrastructure when deployments are sleeping
 - **Environmentally responsible**: Reduce the energy consumption of your infrastructure
 
-As a common example, if you sleep all of your staging/ephemeral deployments 8
-hours each night and on weekends, that means they'll sleep ~55% of the month.
+As a common example, if you sleep all of your staging/ephemeral deployments for
+8 hours each night and on weekends, they'll sleep ~55% of the month.
 **That means ~55% savings on your cloud bill for those resources.**
 
 
@@ -72,17 +72,19 @@ hours each night and on weekends, that means they'll sleep ~55% of the month.
 ## Other features
 
 - **Ingress controller awareness**: Snorlax determines which ingress controller you're running so it can create the correct ingress routes for sleep.
+- **Stays awake until next sleep cycle**: If a request is received during the sleep time, the deployment will stay awake until the next sleep cycle
 
 ## Try it yourself locally
 
-(Requires `minikube` and `helm` to be installed)
+(Requires `make`, `minikube` and `helm` to be installed)
 
-- Run `make demo` to:
-  - create a Minikube cluster
-  - install the latest Helm release of `snorlax`
-  - deploy a dummy deployment, service, ingress, and sleep schedule
-  - starts the minikube tunel to proxy `localhost` to your Minikube cluster ingress service (you'll need to enter your password)
-- Go to [http://localhost](http://localhost) to see either the sleeping page or the dummy deployment (depending on the time of day).
+Run `make demo` to:
+- create a Minikube cluster
+- install the latest Helm release of `snorlax`
+- deploy a dummy deployment, service, ingress, and sleep schedule
+- starts the minikube tunnel to proxy `localhost` to your Minikube cluster ingress service (you'll need to enter your password)
+
+Then go to [http://localhost](http://localhost) to see either the sleeping page or the dummy deployment (depending on the time of day).
 
 You can also then try updating the sleep schedule with `kubectl edit sleepschedule dummy`.
 
@@ -104,8 +106,11 @@ make operator-run
 - Sleep when no requests are received for a certain period of time
 - Add support for custom wake and sleep actions (e.g. hit a webhook on wake)
 - Add support for cron-style schedules (e.g. `0 8 * * *`)
-- Add button to manually wake up the deployment (instead of auto-waking on request)
+- Add a button to manually wake up the deployment (instead of auto-waking on request)
 - Custom image/gif for sleeping page
+- Always sleeping mode, reset at a certain time of day
+- Support waking a deployment on TCP connection
+- Scale list of deployments and ingresses from single `SleepSchedule`
 
 ## Reach out
 
