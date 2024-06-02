@@ -1,4 +1,4 @@
-VERSION = 0.3.0
+VERSION = 0.4.0
 BUNDLE_IMG = ghcr.io/moonbeam-nyc/snorlax-operator-bundle:${VERSION}
 OPERATOR_IMG = ghcr.io/moonbeam-nyc/snorlax-operator:${VERSION}
 PROXY_IMG = ghcr.io/moonbeam-nyc/snorlax-proxy:${VERSION}
@@ -7,6 +7,7 @@ PROXY_IMG = ghcr.io/moonbeam-nyc/snorlax-proxy:${VERSION}
 ## Workflows
 
 dev-setup: minikube-delete minikube-start proxy-install operator-crd-install dummy-install
+dev-run: operator-cd-install operator-run
 demo: minikube-reset helm-install-remote dummy-install minikube-tunnel
 release: proxy-release-multiplatform operator-release-multiplatform operator-helmify helm-package
 
