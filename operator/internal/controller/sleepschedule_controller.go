@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	snorlaxv1beta1 "moonbeam-nyc/snorlax/api/v1beta1"
+	"strconv"
 	"sync"
 	"time"
 
@@ -249,8 +250,16 @@ func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorl
 		wg.Add(1)
 		go func(name string) {
 			defer wg.Done()
-			// TODO: fix replica logic
-			r.scaleDeployment(ctx, sleepSchedule.Namespace, name, int32(sleepSchedule.Spec.WakeReplicas))
+
+			// Get the number of replicas to scale up to
+			replicas, err := r.getDeploymentReplicas(ctx, sleepSchedule, name)
+			if err != nil {
+				log.FromContext(ctx).Error(err, "Failed to get deployment replicas")
+				replicas = 1
+			}
+
+			// Wake and wait for the deployment
+			r.scaleDeployment(ctx, sleepSchedule.Namespace, name, replicas)
 			r.waitForDeploymentToWake(ctx, sleepSchedule.Namespace, name)
 		}(deploymentName)
 	}
@@ -289,18 +298,87 @@ func (r *SleepScheduleReconciler) sleep(ctx context.Context, sleepSchedule *snor
 
 	// Scale down each deployment
 	for _, deploymentName := range sleepSchedule.Spec.DeploymentNames {
+		r.storeCurrentReplicas(ctx, sleepSchedule, deploymentName)
 		r.scaleDeployment(ctx, sleepSchedule.Namespace, deploymentName, 0)
 	}
 }
 
-func (r *SleepScheduleReconciler) scaleDeployment(ctx context.Context, namespace, deploymentName string, wakeReplicas int32) {
+func (r *SleepScheduleReconciler) getDeploymentReplicas(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule, deploymentName string) (int32, error) {
+	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
+
+	deployment := &appsv1.Deployment{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: deploymentName}, deployment)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get Deployment")
+		return 0, err
+	}
+
+	configMap := &corev1.ConfigMap{}
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-sleep-data", objectName)}, configMap)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get ConfigMap")
+		return 0, err
+	}
+
+	replicasKey := fmt.Sprintf("replicas.%s", deploymentName)
+	replicasValue := configMap.Data[replicasKey]
+	replicas, err := strconv.Atoi(replicasValue)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to parse replicas")
+		return 0, err
+	}
+
+	return int32(replicas), nil
+}
+
+func (r *SleepScheduleReconciler) storeCurrentReplicas(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule, deploymentName string) {
+	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
+
+	deployment := &appsv1.Deployment{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: deploymentName}, deployment)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get Deployment")
+		return
+	}
+
+	replicasKey := fmt.Sprintf("replicas.%s", deploymentName)
+	configMapData := map[string]string{
+		replicasKey: fmt.Sprintf("%d", *deployment.Spec.Replicas),
+	}
+
+	configMap := &corev1.ConfigMap{}
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-sleep-data", objectName)}, configMap)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get ConfigMap")
+		return
+	}
+
+	// Prepare the patch
+	patchData := map[string]interface{}{
+		"data": configMapData,
+	}
+	patchBytes, err := json.Marshal(patchData)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to marshal patch data")
+		return
+	}
+
+	err = r.Patch(ctx, configMap, client.RawPatch(types.MergePatchType, patchBytes))
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to update ConfigMap")
+		return
+	}
+}
+
+func (r *SleepScheduleReconciler) scaleDeployment(ctx context.Context, namespace, deploymentName string, replicas int32) {
 	deployment := &appsv1.Deployment{}
 	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: deploymentName}, deployment)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to get Deployment")
 		return
 	}
-	deployment.Spec.Replicas = &wakeReplicas
+
+	deployment.Spec.Replicas = &replicas
 	err = r.Update(ctx, deployment)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to update Deployment replicas")

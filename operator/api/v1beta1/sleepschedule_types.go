@@ -43,10 +43,6 @@ type SleepScheduleSpec struct {
 	// +kubebuilder:validation:Required
 	DeploymentNames []string `json:"deploymentNames,omitempty"`
 
-	// The number of replicas that the deployment with it wakes
-	// +kubebuilder:validation:Required
-	WakeReplicas int `json:"wakeReplicas,omitempty"`
-
 	// The names of the ingresses that will be updated to point to the snorlax proxy
 	// which wakes the deployments when a request is received. A copy of the originals
 	// are stored in a configmap.

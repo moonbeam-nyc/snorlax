@@ -4,7 +4,6 @@ metadata:
   namespace: default
   name: dummy
 spec:
-  wakeReplicas: 1
   wakeTime: '10:00am'
   sleepTime: '10:01am'
   timezone: 'America/New_York'
@@ -22,7 +21,7 @@ kind: Deployment
 metadata:
   name: dummy-frontend
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: dummy-frontend
