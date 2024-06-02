@@ -41,12 +41,12 @@ type SleepScheduleSpec struct {
 
 	// The names of the deployments that will be slept/woken
 	// +kubebuilder:validation:Required
-	DeploymentNames []string `json:"deploymentNames,omitempty"`
+	Deployments []string `json:"deployments,omitempty"`
 
 	// The names of the ingresses that will be updated to point to the snorlax proxy
 	// which wakes the deployments when a request is received. A copy of the originals
 	// are stored in a configmap.
-	IngressNames []string `json:"ingressNames,omitempty"`
+	Ingresses []string `json:"ingresses,omitempty"`
 }
 
 // SleepScheduleStatus defines the observed state of SleepSchedule

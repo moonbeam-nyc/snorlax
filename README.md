@@ -52,16 +52,17 @@ As a common example, if you sleep all of your staging/ephemeral deployments for
       # Required fields
       wakeTime: '8:00am'
       sleepTime: '10:00pm'
-      deploymentName: your-app-deployment
-      wakeReplicas: 3
+      deployments:
+      - your-app-deployment
 
-      # (optional) the timezone to use for the input times above
+      # (optional, defaults to UTC) the timezone to use for the input times above
       timezone: 'America/New_York'
 
-      # (optional) the ingress to update and point to the snorlax wake proxy,
+      # (optional) the ingresses to update and point to the snorlax wake proxy,
       # which wakes your deployment when a request is received while it's
       # sleeping.
-      ingressName: your-app-ingress
+      ingresses:
+      - your-app-ingress
     ```
 
 3. Apply the `SleepSchedule` resource

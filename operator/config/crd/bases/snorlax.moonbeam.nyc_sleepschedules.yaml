@@ -38,12 +38,12 @@ spec:
             type: object
           spec:
             properties:
-              deploymentNames:
+              deployments:
                 description: The names of the deployments that will be slept/woken
                 items:
                   type: string
                 type: array
-              ingressNames:
+              ingresses:
                 description: |-
                   The names of the ingresses that will be updated to point to the snorlax proxy
                   which wakes the deployments when a request is received. A copy of the originals
@@ -57,9 +57,6 @@ spec:
               timezone:
                 description: The timezone that the input times are based in
                 type: string
-              wakeReplicas:
-                description: The number of replicas that the deployment with it wakes
-                type: integer
               wakeTime:
                 description: The time that the deployment will wake up
                 type: string

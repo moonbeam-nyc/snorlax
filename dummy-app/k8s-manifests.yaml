@@ -7,11 +7,11 @@ spec:
   wakeTime: '10:00am'
   sleepTime: '10:01am'
   timezone: 'America/New_York'
-  deploymentNames:
+  deployments:
   - dummy-frontend
   - dummy-db
   - dummy-redis
-  ingressNames:
+  ingresses:
   - dummy-ingress
 
 ---

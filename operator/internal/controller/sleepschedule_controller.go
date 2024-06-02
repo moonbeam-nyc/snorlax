@@ -223,12 +223,12 @@ func (r *SleepScheduleReconciler) finalizeSleepSchedule(ctx context.Context, sle
 
 func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) (bool, error) {
 	// Return false if the sleep schedule has no deployments
-	if len(sleepSchedule.Spec.DeploymentNames) == 0 {
+	if len(sleepSchedule.Spec.Deployments) == 0 {
 		return false, nil
 	}
 
 	// Return false if any deployment has 0 replicas
-	for _, deploymentName := range sleepSchedule.Spec.DeploymentNames {
+	for _, deploymentName := range sleepSchedule.Spec.Deployments {
 		deployment := &appsv1.Deployment{}
 		err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: deploymentName}, deployment)
 		if err != nil {
@@ -246,7 +246,7 @@ func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule 
 func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
 	// Scale up each deployment
 	var wg sync.WaitGroup
-	for _, deploymentName := range sleepSchedule.Spec.DeploymentNames {
+	for _, deploymentName := range sleepSchedule.Spec.Deployments {
 		wg.Add(1)
 		go func(name string) {
 			defer wg.Done()
@@ -268,7 +268,7 @@ func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorl
 	wg.Wait()
 
 	// Load the ingress copies
-	for _, ingressName := range sleepSchedule.Spec.IngressNames {
+	for _, ingressName := range sleepSchedule.Spec.Ingresses {
 		err := r.loadIngressCopy(ctx, sleepSchedule, ingressName)
 		if err != nil {
 			log.FromContext(ctx).Error(err, "Failed to load Ingress copy")
@@ -291,13 +291,13 @@ func (r *SleepScheduleReconciler) sleep(ctx context.Context, sleepSchedule *snor
 	r.deploySnorlaxProxy(ctx, sleepSchedule)
 
 	// Point each ingress to the Snorlax proxy
-	for _, ingressName := range sleepSchedule.Spec.IngressNames {
+	for _, ingressName := range sleepSchedule.Spec.Ingresses {
 		r.takeIngressCopy(ctx, sleepSchedule, ingressName)
 		r.pointIngressToSnorlax(ctx, sleepSchedule, ingressName)
 	}
 
 	// Scale down each deployment
-	for _, deploymentName := range sleepSchedule.Spec.DeploymentNames {
+	for _, deploymentName := range sleepSchedule.Spec.Deployments {
 		r.storeCurrentReplicas(ctx, sleepSchedule, deploymentName)
 		r.scaleDeployment(ctx, sleepSchedule.Namespace, deploymentName, 0)
 	}
