@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	snorlaxv1beta1 "moonbeam-nyc/snorlax/api/v1beta1"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -155,11 +156,11 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// If the app should be awake, clear the proxy data
 	if !shouldSleep {
 		configMap := &corev1.ConfigMap{}
-		err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-proxy-data", objectName)}, configMap)
+		err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-sleep-data", objectName)}, configMap)
 		if err == nil {
 			err = r.Delete(ctx, configMap)
 			if err != nil {
-				log.Error(err, "failed to delete proxy-data configmap")
+				log.Error(err, "failed to delete sleep-data configmap")
 				return ctrl.Result{}, err
 			}
 		}
@@ -174,7 +175,7 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// Check if the configmaps request-received key was set to "true"
 	var wakeRequestReceived bool
 	configMap := &corev1.ConfigMap{}
-	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-proxy-data", objectName)}, configMap)
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-sleep-data", objectName)}, configMap)
 	if err != nil {
 		// log.Error(err, "Failed to get ConfigMap")
 		wakeRequestReceived = false
@@ -220,38 +221,76 @@ func (r *SleepScheduleReconciler) finalizeSleepSchedule(ctx context.Context, sle
 }
 
 func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) (bool, error) {
-	deployment := &appsv1.Deployment{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: sleepSchedule.Spec.DeploymentName}, deployment)
-	if err != nil {
-		return false, err
+	// Return false if the sleep schedule has no deployments
+	if len(sleepSchedule.Spec.DeploymentNames) == 0 {
+		return false, nil
 	}
 
-	// Consider "awake" if at least one replica is available
-	return *deployment.Spec.Replicas > 0, nil
+	// Return false if any deployment has 0 replicas
+	for _, deploymentName := range sleepSchedule.Spec.DeploymentNames {
+		deployment := &appsv1.Deployment{}
+		err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: deploymentName}, deployment)
+		if err != nil {
+			return false, err
+		}
+
+		if *deployment.Spec.Replicas == 0 {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
-	r.scaleDeployment(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.DeploymentName, int32(sleepSchedule.Spec.WakeReplicas))
+	// Scale up each deployment
+	var wg sync.WaitGroup
+	for _, deploymentName := range sleepSchedule.Spec.DeploymentNames {
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+			// TODO: fix replica logic
+			r.scaleDeployment(ctx, sleepSchedule.Namespace, name, int32(sleepSchedule.Spec.WakeReplicas))
+			r.waitForDeploymentToWake(ctx, sleepSchedule.Namespace, name)
+		}(deploymentName)
+	}
 
-	if sleepSchedule.Spec.IngressName != "" {
-		r.waitForDeploymentToWake(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.DeploymentName)
-		err := r.loadIngressCopy(ctx, sleepSchedule)
+	// Wait for all deployments to finish scaling up
+	wg.Wait()
+
+	// Load the ingress copies
+	for _, ingressName := range sleepSchedule.Spec.IngressNames {
+		err := r.loadIngressCopy(ctx, sleepSchedule, ingressName)
 		if err != nil {
 			log.FromContext(ctx).Error(err, "Failed to load Ingress copy")
 			return err
 		}
 	}
 
+	// Delete the Snorlax proxy
+	err := r.DeleteSnorlaxProxy(ctx, sleepSchedule)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to delete Snorlax proxy")
+		return err
+	}
+
 	return nil
 }
 
 func (r *SleepScheduleReconciler) sleep(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
-	if sleepSchedule.Spec.IngressName != "" {
-		r.takeIngressCopy(ctx, sleepSchedule)
-		r.pointIngressToSnorlax(ctx, sleepSchedule)
+	// Deploy the Snorlax proxy
+	r.deploySnorlaxProxy(ctx, sleepSchedule)
+
+	// Point each ingress to the Snorlax proxy
+	for _, ingressName := range sleepSchedule.Spec.IngressNames {
+		r.takeIngressCopy(ctx, sleepSchedule, ingressName)
+		r.pointIngressToSnorlax(ctx, sleepSchedule, ingressName)
 	}
 
-	r.scaleDeployment(ctx, sleepSchedule.Namespace, sleepSchedule.Spec.DeploymentName, 0)
+	// Scale down each deployment
+	for _, deploymentName := range sleepSchedule.Spec.DeploymentNames {
+		r.scaleDeployment(ctx, sleepSchedule.Namespace, deploymentName, 0)
+	}
 }
 
 func (r *SleepScheduleReconciler) scaleDeployment(ctx context.Context, namespace, deploymentName string, wakeReplicas int32) {
@@ -289,37 +328,40 @@ func (r *SleepScheduleReconciler) waitForDeploymentToWake(ctx context.Context, n
 	}
 }
 
-func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
+func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule, ingressName string) {
 
 	// fmt.Println("Taking ingress copy")
 
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 
+	// Get the ingress to copy
 	ingress := &networkingv1.Ingress{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: sleepSchedule.Spec.IngressName}, ingress)
+	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: ingressName}, ingress)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "failed to get ingress for copy")
 		return
 	}
 
+	// Marshal the ingress to YAML
 	ingressYAML, err := yaml.Marshal(ingress)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "failed to marshal ingress YAML")
 		return
 	}
 
+	// Create the ConfigMap to store the ingress copy
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      objectName + "-ingress-copy",
+			Name:      objectName + "-ingress-copy-" + ingressName,
 			Namespace: sleepSchedule.Namespace,
 		},
 		Data: map[string]string{
 			"ingressYAML": string(ingressYAML),
 		},
 	}
-
 	ctrl.SetControllerReference(sleepSchedule, configMap, r.Scheme)
 
+	// Try to create or update the configmap
 	if err := r.Create(ctx, configMap); err != nil {
 		if err := r.Update(ctx, configMap); err != nil {
 			log.FromContext(ctx).Error(err, "Failed to create or update ConfigMap")
@@ -327,7 +369,7 @@ func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, sleepSche
 	}
 }
 
-func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
+func (r *SleepScheduleReconciler) deploySnorlaxProxy(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 
 	// Create the snorlax service for this ingress
@@ -458,7 +500,7 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 	// Create the configmap for proxy data
 	proxyDataConfigMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-proxy-data", objectName),
+			Name:      fmt.Sprintf("%s-sleep-data", objectName),
 			Namespace: sleepSchedule.Namespace,
 		},
 		Data: map[string]string{
@@ -470,7 +512,7 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 
 	// Check if the configmap already exists
 	existingConfigMap := &corev1.ConfigMap{}
-	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-proxy-data", objectName)}, existingConfigMap)
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-sleep-data", objectName)}, existingConfigMap)
 	if err != nil && client.IgnoreNotFound(err) != nil {
 		log.FromContext(ctx).Error(err, "Failed to get existing proxy data configmap")
 		return
@@ -509,12 +551,12 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 					Containers: []corev1.Container{
 						{
 							Name:            "snorlax",
-							Image:           "ghcr.io/moonbeam-nyc/snorlax-proxy:0.2.0",
-							ImagePullPolicy: "Always",
+							Image:           "ghcr.io/moonbeam-nyc/snorlax-proxy:0.4.0",
+							ImagePullPolicy: "IfNotPresent",
 							Env: []corev1.EnvVar{
 								{
 									Name:  "SNORLAX_DATA_CONFIGMAP",
-									Value: fmt.Sprintf("%s-proxy-data", objectName),
+									Value: fmt.Sprintf("%s-sleep-data", objectName),
 								},
 								{
 									Name:  "SNORLAX_PORT",
@@ -553,9 +595,14 @@ func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sle
 	time.Sleep(1 * time.Second)
 	r.waitForDeploymentToWake(ctx, sleepSchedule.Namespace, objectName)
 
+}
+
+func (r *SleepScheduleReconciler) pointIngressToSnorlax(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule, ingressName string) {
+	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
+
 	// Update ingress to point to snorlax service
 	ingress := &networkingv1.Ingress{}
-	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: sleepSchedule.Spec.IngressName}, ingress)
+	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: ingressName}, ingress)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to get Ingress for update")
 		return
@@ -614,11 +661,11 @@ func int32Ptr(i int32) *int32 {
 	return &i
 }
 
-func (r *SleepScheduleReconciler) loadIngressCopy(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
+func (r *SleepScheduleReconciler) loadIngressCopy(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule, ingressName string) error {
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 
 	configMap := &corev1.ConfigMap{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName + "-ingress-copy"}, configMap)
+	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName + "-ingress-copy-" + ingressName}, configMap)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to get ConfigMap")
 		return err
@@ -642,22 +689,63 @@ func (r *SleepScheduleReconciler) loadIngressCopy(ctx context.Context, sleepSche
 		log.FromContext(ctx).Error(err, "Failed to patch Ingress with original spec")
 	}
 
-	existingService := &corev1.Service{}
-	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, existingService)
+	return nil
+}
+
+func (r *SleepScheduleReconciler) DeleteSnorlaxProxy(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
+	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
+
+	// Delete the Snorlax service
+	snorlaxService := &corev1.Service{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, snorlaxService)
 	if err == nil {
-		err = r.Delete(ctx, existingService)
+		err = r.Delete(ctx, snorlaxService)
 		if err != nil {
-			log.FromContext(ctx).Error(err, "Failed to delete snorlax service")
+			log.FromContext(ctx).Error(err, "Failed to delete Snorlax service")
 			return err
 		}
 	}
 
-	existingDeployment := &appsv1.Deployment{}
-	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, existingDeployment)
+	// Delete the Snorlax deployment
+	snorlaxDeployment := &appsv1.Deployment{}
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, snorlaxDeployment)
 	if err == nil {
-		err = r.Delete(ctx, existingDeployment)
+		err = r.Delete(ctx, snorlaxDeployment)
 		if err != nil {
-			log.FromContext(ctx).Error(err, "Failed to delete snorlax deployment")
+			log.FromContext(ctx).Error(err, "Failed to delete Snorlax deployment")
+			return err
+		}
+	}
+
+	// Delete the Snorlax role
+	role := &rbacv1.Role{}
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, role)
+	if err == nil {
+		err = r.Delete(ctx, role)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Failed to delete Snorlax role")
+			return err
+		}
+	}
+
+	// Delete the Snorlax role binding
+	roleBinding := &rbacv1.RoleBinding{}
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, roleBinding)
+	if err == nil {
+		err = r.Delete(ctx, roleBinding)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Failed to delete Snorlax role binding")
+			return err
+		}
+	}
+
+	// Delete the Snorlax service account
+	serviceAccount := &corev1.ServiceAccount{}
+	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName}, serviceAccount)
+	if err == nil {
+		err = r.Delete(ctx, serviceAccount)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Failed to delete Snorlax service account")
 			return err
 		}
 	}
