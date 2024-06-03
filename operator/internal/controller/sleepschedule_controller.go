@@ -57,8 +57,8 @@ const finalizer = "finalizer.snorlax.moonbeam.nyc"
 //+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;watch;list;update;patch
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;watch;list;create;delete
 //+kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;watch;list;create
-//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;watch;list;create
-//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;watch;list;create
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;watch;list;create;delete
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;watch;list;create;delete
 
 func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
