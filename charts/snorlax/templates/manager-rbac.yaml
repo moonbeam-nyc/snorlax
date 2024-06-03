@@ -64,6 +64,7 @@ rules:
   - rolebindings
   verbs:
   - create
+  - delete
   - get
   - list
   - watch
@@ -73,6 +74,7 @@ rules:
   - roles
   verbs:
   - create
+  - delete
   - get
   - list
   - watch
