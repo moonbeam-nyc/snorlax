@@ -4,12 +4,12 @@
 
 # Snorlax · [![Build Docker image](https://github.com/moonbeam-nyc/snorlax/actions/workflows/build-docker-image.yaml/badge.svg)](https://github.com/moonbeam-nyc/snorlax/actions/workflows/build-docker-image.yaml)
 
-Snorlax is a Kubernetes operator that wakes and sleeps a Kubernetes deployment on a schedule.
+Snorlax is a Kubernetes operator that wakes and sleeps a set of Kubernetes deployments on a schedule.
 
-If a request is received when the deployment is sleeping, a cute sleeping Snorlax page is
-served and the Kubernetes deployment is woken up. Once the service is ready, the page will auto-refresh.
+If you specify ingresses, a request to any of the ingresses will serve a cute sleeping Snorlax page served and the Kubernetes deployments are woken up.
+Once the deployments are ready, the page will auto-refresh.
 
-You create `SleepSchedule` resources to define the schedule for any deployment (and optionally its ingress).
+You create `SleepSchedule` resources to define the schedule for deployments (and optionally their respective ingresses).
 
 
 ## Why Snorlax?
@@ -20,8 +20,7 @@ Sleeping your environments is the equivalent of turning off the lights at night.
 - **Security**: Reduce the attack surface of your infrastructure when deployments are sleeping
 - **Environmentally responsible**: Reduce the energy consumption of your infrastructure
 
-As a common example, if you sleep all of your staging/ephemeral deployments for
-8 hours each night and on weekends, they'll sleep ~55% of the month.
+As a common example, if you sleep all of your staging/ephemeral deployments for 8 hours each night and on weekends, they'll sleep ~55% of the month.
 **That means ~55% savings on your cloud bill for those resources.**
 
 
