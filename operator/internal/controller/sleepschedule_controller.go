@@ -154,19 +154,6 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		shouldSleep = now.After(sleepDatetime) && now.Before(wakeDatetime)
 	}
 
-	// If the app should be awake, clear the proxy data
-	if !shouldSleep {
-		configMap := &corev1.ConfigMap{}
-		err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-sleep-data", objectName)}, configMap)
-		if err == nil {
-			err = r.Delete(ctx, configMap)
-			if err != nil {
-				log.Error(err, "failed to delete sleep-data configmap")
-				return ctrl.Result{}, err
-			}
-		}
-	}
-
 	// fmt.Println("Checking if the app should be awake or asleep")
 	// fmt.Println("now:", now)
 	// fmt.Println("wakeDatetime:", wakeDatetime)
@@ -192,6 +179,20 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	} else if !awake && (!shouldSleep || wakeRequestReceived) {
 		log.Info("Waking up")
 		r.wake(ctx, sleepSchedule)
+	}
+
+	// If the app should be awake, clear the sleep data
+	// NOTE: we have to do this after wake because sleep data is used to when waking
+	if !shouldSleep {
+		configMap := &corev1.ConfigMap{}
+		err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-sleep-data", objectName)}, configMap)
+		if err == nil {
+			err = r.Delete(ctx, configMap)
+			if err != nil {
+				log.Error(err, "failed to delete sleep-data configmap")
+				return ctrl.Result{}, err
+			}
+		}
 	}
 
 	// Requeue to check again in 10 seconds
