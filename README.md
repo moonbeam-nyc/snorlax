@@ -4,12 +4,10 @@
 
 # Snorlax · [![Build Docker image](https://github.com/moonbeam-nyc/snorlax/actions/workflows/build-docker-image.yaml/badge.svg)](https://github.com/moonbeam-nyc/snorlax/actions/workflows/build-docker-image.yaml)
 
-Snorlax is a Kubernetes operator that wakes and sleeps a set of Kubernetes deployments on a schedule.
+**Snorlax** is a Kubernetes operator that wakes and sleeps a specified set of Kubernetes deployments on a schedule.
 
-If you specify ingresses, they are updated to serve a wake proxy which serves a "sleeping" splash page and wakes the deployments up.
+You can also specify ingresses which will be updated to point to a wake server when asleep. When a request is received, **the wake server serves a "waking up" splash page and wakes the deployments up**.
 Once the deployments are ready, the ingresses are restored and the splash page will auto-refresh.
-
-You create `SleepSchedule` resources to define the schedule for deployments (and optionally their respective ingresses).
 
 
 ## Why Snorlax?
