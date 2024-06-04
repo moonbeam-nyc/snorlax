@@ -47,6 +47,14 @@ type SleepScheduleReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+type SleepScheduleData struct {
+	Location  *time.Location
+	Now       time.Time
+	WakeTime  time.Time
+	SleepTime time.Time
+	Timezone  *time.Location
+}
+
 const finalizer = "finalizer.snorlax.moonbeam.nyc"
 
 //+kubebuilder:rbac:groups=snorlax.moonbeam.nyc,resources=sleepschedules,verbs=get;list;watch;create;update;patch;delete
@@ -60,6 +68,47 @@ const finalizer = "finalizer.snorlax.moonbeam.nyc"
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;watch;list;create;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;watch;list;create;delete
 
+func (r *SleepScheduleReconciler) ProcessSleepSchedule(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) (*SleepScheduleData, error) {
+	log := log.FromContext(ctx)
+	sleepScheduleData := &SleepScheduleData{}
+
+	// Load location
+	var err error
+	sleepScheduleData.Location, err = time.LoadLocation(sleepSchedule.Spec.Timezone)
+	if err != nil {
+		log.Error(err, "failed to load timezone")
+		return nil, err
+	}
+
+	// Parse the wake time
+	sleepScheduleData.WakeTime, err = time.Parse("3:04pm", sleepSchedule.Spec.WakeTime)
+	if err != nil {
+		log.Error(err, "failed to parse wake time")
+		return nil, err
+	}
+
+	// Parse the sleep time
+	sleepScheduleData.SleepTime, err = time.Parse("3:04pm", sleepSchedule.Spec.SleepTime)
+	if err != nil {
+		log.Error(err, "failed to parse sleep time")
+		return nil, err
+	}
+
+	// Load the timezone
+	if sleepSchedule.Spec.Timezone != "" {
+		var err error
+		sleepScheduleData.Timezone, err = time.LoadLocation(sleepSchedule.Spec.Timezone)
+		if err != nil {
+			log.Error(err, "failed to load time zone")
+			return nil, err
+		}
+	} else {
+		sleepScheduleData.Timezone = time.UTC
+	}
+
+	return sleepScheduleData, nil
+}
+
 func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
@@ -71,46 +120,31 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
-	location, err := time.LoadLocation(sleepSchedule.Spec.Timezone)
-	if err != nil {
-		log.Error(err, "failed to load timezone")
-		return ctrl.Result{}, err
-	}
-	now := time.Now().In(location)
 
-	// Parse the wake time
-	wakeTime, err := time.Parse("3:04pm", sleepSchedule.Spec.WakeTime)
+	// Load sleep schedule data
+	sleepScheduleData, err := r.ProcessSleepSchedule(ctx, sleepSchedule)
 	if err != nil {
-		log.Error(err, "failed to parse wake time")
+		log.Error(err, "Failed to process sleep schedule")
 		return ctrl.Result{}, err
 	}
 
-	// Parse the sleep time
-	sleepTime, err := time.Parse("3:04pm", sleepSchedule.Spec.SleepTime)
-	if err != nil {
-		log.Error(err, "failed to parse sleep time")
-		return ctrl.Result{}, err
-	}
+	// Load current time
+	now := time.Now().In(sleepScheduleData.Location)
+	wakeDatetime := time.Date(now.Year(), now.Month(), now.Day(), sleepScheduleData.WakeTime.Hour(), sleepScheduleData.WakeTime.Minute(), 0, 0, sleepScheduleData.Timezone)
+	sleepDatetime := time.Date(now.Year(), now.Month(), now.Day(), sleepScheduleData.SleepTime.Hour(), sleepScheduleData.SleepTime.Minute(), 0, 0, sleepScheduleData.Timezone)
 
-	// Load the timezone
-	var timezone *time.Location
-	if sleepSchedule.Spec.Timezone != "" {
-		var err error
-		timezone, err = time.LoadLocation(sleepSchedule.Spec.Timezone)
-		if err != nil {
-			log.Error(err, "failed to load time zone")
-			return ctrl.Result{}, err
-		}
-	} else {
-		timezone = time.UTC
-	}
-
-	wakeDatetime := time.Date(now.Year(), now.Month(), now.Day(), wakeTime.Hour(), wakeTime.Minute(), 0, 0, timezone)
-	sleepDatetime := time.Date(now.Year(), now.Month(), now.Day(), sleepTime.Hour(), sleepTime.Minute(), 0, 0, timezone)
-
+	// Determine if the app is awake
 	awake, err := r.isAppAwake(ctx, sleepSchedule)
 	if err != nil {
 		log.Error(err, "Failed to determine if the application is awake")
+		return ctrl.Result{}, err
+	}
+
+	// Update status based on the actual check
+	sleepSchedule.Status.Awake = awake
+	err = r.Status().Patch(ctx, sleepSchedule, client.MergeFrom(sleepSchedule.DeepCopy()))
+	if err != nil {
+		log.Error(err, "failed to patch SleepSchedule status")
 		return ctrl.Result{}, err
 	}
 
@@ -121,14 +155,6 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-	}
-
-	// Update status based on the actual check
-	sleepSchedule.Status.Awake = awake
-	err = r.Status().Patch(ctx, sleepSchedule, client.MergeFrom(sleepSchedule.DeepCopy()))
-	if err != nil {
-		log.Error(err, "failed to patch SleepSchedule status")
-		return ctrl.Result{}, err
 	}
 
 	// Check if the instance is marked to be deleted, which is
@@ -165,7 +191,6 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	configMap := &corev1.ConfigMap{}
 	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-sleep-data", objectName)}, configMap)
 	if err != nil {
-		// log.Error(err, "Failed to get ConfigMap")
 		wakeRequestReceived = false
 	} else {
 		wakeRequestReceived = configMap.Data["received-request"] == "true"
