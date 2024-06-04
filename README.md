@@ -52,15 +52,15 @@ As a common example, if you sleep all of your staging/ephemeral deployments for 
       wakeTime: '8:00am'
       sleepTime: '10:00pm'
       deployments:
-      - your-app-frontend
-      - your-app-db
-      - your-app-redis
+      - name: your-app-frontend
+      - name: your-app-db
+      - name: your-app-redis
 
       # (optional) the ingresses to update and point to the snorlax wake proxy,
       # which wakes your deployment when a request is received while it's
       # sleeping.
       ingresses:
-      - your-app-ingress
+      - name: your-app-ingress
 
       # (optional, defaults to UTC) the timezone to use for the input times above
       timezone: 'America/New_York'

@@ -696,7 +696,7 @@ func (r *SleepScheduleReconciler) deploySnorlaxProxy(ctx context.Context, sleepS
 					Containers: []corev1.Container{
 						{
 							Name:            "snorlax",
-							Image:           "ghcr.io/moonbeam-nyc/snorlax-proxy:0.4.0",
+							Image:           "ghcr.io/moonbeam-nyc/snorlax-proxy:0.5.0",
 							ImagePullPolicy: "IfNotPresent",
 							Env: []corev1.EnvVar{
 								{

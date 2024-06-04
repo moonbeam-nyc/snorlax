@@ -1,4 +1,4 @@
-VERSION = 0.5.0-dev
+VERSION = 0.5.0
 BUNDLE_IMG = ghcr.io/moonbeam-nyc/snorlax-operator-bundle:${VERSION}
 OPERATOR_IMG = ghcr.io/moonbeam-nyc/snorlax-operator:${VERSION}
 PROXY_IMG = ghcr.io/moonbeam-nyc/snorlax-proxy:${VERSION}
