@@ -39,14 +39,29 @@ type SleepScheduleSpec struct {
 	// +kubebuilder:validation:Required
 	Timezone string `json:"timezone"`
 
-	// The names of the deployments that will be slept/woken
+	// The deployments that will be slept/woken.
+	// SHAPE: {name: "deployment-name"}
 	// +kubebuilder:validation:Required
-	Deployments []string `json:"deployments,omitempty"`
+	Deployments []Deployment `json:"deployments,omitempty"`
 
 	// The names of the ingresses that will be updated to point to the snorlax proxy
 	// which wakes the deployments when a request is received. A copy of the originals
 	// are stored in a configmap.
-	Ingresses []string `json:"ingresses,omitempty"`
+	// SHAPE: {name: "ingress-name", requires: [{deployment: {name: "deployment-name"}}]}
+	Ingresses []Ingress `json:"ingresses,omitempty"`
+}
+
+type Deployment struct {
+	Name string `json:"name"`
+}
+
+type IngressRequirement struct {
+	Deployment Deployment `json:"deployment"`
+}
+
+type Ingress struct {
+	Name     string               `json:"name"`
+	Requires []IngressRequirement `json:"requires,omitempty"`
 }
 
 // SleepScheduleStatus defines the observed state of SleepSchedule

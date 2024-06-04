@@ -8,11 +8,14 @@ spec:
   sleepTime: '10:01am'
   timezone: 'America/New_York'
   deployments:
-  - dummy-frontend
-  - dummy-db
-  - dummy-redis
+  - name: dummy-frontend
+  - name: dummy-db
+  - name: dummy-redis
   ingresses:
-  - dummy-ingress
+  - name: dummy-ingress
+    requires:
+    - deployment:
+        name: dummy-frontend
 
 ---
 
@@ -50,6 +53,10 @@ spec:
       labels:
         app: dummy-db
     spec:
+      initContainers:
+        - name: sleep
+          image: busybox
+          command: ['sh', '-c', 'sleep 10']
       containers:
         - name: mysql
           image: mysql:latest

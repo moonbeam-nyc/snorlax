@@ -41,6 +41,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+type key string
+
 // SleepScheduleReconciler reconciles a SleepSchedule object
 type SleepScheduleReconciler struct {
 	client.Client
@@ -109,6 +111,24 @@ func (r *SleepScheduleReconciler) ProcessSleepSchedule(ctx context.Context, slee
 	return sleepScheduleData, nil
 }
 
+func (r *SleepScheduleReconciler) waitForRequirementsToBeReady(ctx context.Context, ing *snorlaxv1beta1.Ingress) {
+	sleepSchedule := ctx.Value(key("sleepSchedule")).(*snorlaxv1beta1.SleepSchedule)
+
+	var requirements []snorlaxv1beta1.IngressRequirement
+	if len(ing.Requires) > 0 {
+		requirements = ing.Requires
+	} else {
+		requirements = make([]snorlaxv1beta1.IngressRequirement, len(sleepSchedule.Spec.Deployments))
+		for i, deployment := range sleepSchedule.Spec.Deployments {
+			requirements[i] = snorlaxv1beta1.IngressRequirement{Deployment: deployment}
+		}
+	}
+
+	for _, req := range requirements {
+		r.waitForDeploymentToWake(ctx, sleepSchedule.Namespace, req.Deployment.Name)
+	}
+}
+
 func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
@@ -118,6 +138,9 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	// Put the SleepSchedule in the context
+	ctx = context.WithValue(ctx, key("sleepSchedule"), sleepSchedule)
 
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 
@@ -201,9 +224,11 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if awake && shouldSleep && !wakeRequestReceived {
 		log.Info("Going to sleep")
 		r.sleep(ctx, sleepSchedule)
+		log.Info("Successfully asleep")
 	} else if !awake && (!shouldSleep || wakeRequestReceived) {
 		log.Info("Waking up")
 		r.wake(ctx, sleepSchedule)
+		log.Info("Successfully awake")
 	}
 
 	// If the app should be awake, clear the sleep data
@@ -254,9 +279,9 @@ func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule 
 	}
 
 	// Return false if any deployment has 0 replicas
-	for _, deploymentName := range sleepSchedule.Spec.Deployments {
+	for _, deploy := range sleepSchedule.Spec.Deployments {
 		deployment := &appsv1.Deployment{}
-		err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: deploymentName}, deployment)
+		err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: deploy.Name}, deployment)
 		if err != nil {
 			return false, err
 		}
@@ -272,7 +297,7 @@ func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule 
 func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
 	// Scale up each deployment
 	var wg sync.WaitGroup
-	for _, deploymentName := range sleepSchedule.Spec.Deployments {
+	for _, deploy := range sleepSchedule.Spec.Deployments {
 		wg.Add(1)
 		go func(name string) {
 			defer wg.Done()
@@ -287,20 +312,36 @@ func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorl
 			// Wake and wait for the deployment
 			r.scaleDeployment(ctx, sleepSchedule.Namespace, name, replicas)
 			r.waitForDeploymentToWake(ctx, sleepSchedule.Namespace, name)
-		}(deploymentName)
+		}(deploy.Name)
 	}
 
-	// Wait for all deployments to finish scaling up
+	// Have each ingress wait for its requirements and load the copy
+	for _, ing := range sleepSchedule.Spec.Ingresses {
+		wg.Add(1)
+		go func(ing snorlaxv1beta1.Ingress) error {
+			defer wg.Done()
+
+			// Wait 2 seconds for the deployments to start scaling
+			time.Sleep(2 * time.Second)
+
+			// Wait for all requirements to be ready
+			r.waitForRequirementsToBeReady(ctx, &ing)
+
+			// Load the ingress copy
+			err := r.loadIngressCopy(ctx, sleepSchedule, ing.Name)
+			if err != nil {
+				log.FromContext(ctx).Error(err, "Failed to load Ingress copy")
+				return err
+			}
+
+			log.FromContext(ctx).Info(fmt.Sprintf("Ingress restored: %s", ing.Name))
+
+			return nil
+		}(ing)
+	}
+
+	// Wait for all deployments and ingresses to wake
 	wg.Wait()
-
-	// Load the ingress copies
-	for _, ingressName := range sleepSchedule.Spec.Ingresses {
-		err := r.loadIngressCopy(ctx, sleepSchedule, ingressName)
-		if err != nil {
-			log.FromContext(ctx).Error(err, "Failed to load Ingress copy")
-			return err
-		}
-	}
 
 	// Delete the Snorlax proxy
 	err := r.DeleteSnorlaxProxy(ctx, sleepSchedule)
@@ -317,15 +358,15 @@ func (r *SleepScheduleReconciler) sleep(ctx context.Context, sleepSchedule *snor
 	r.deploySnorlaxProxy(ctx, sleepSchedule)
 
 	// Point each ingress to the Snorlax proxy
-	for _, ingressName := range sleepSchedule.Spec.Ingresses {
-		r.takeIngressCopy(ctx, sleepSchedule, ingressName)
-		r.pointIngressToSnorlax(ctx, sleepSchedule, ingressName)
+	for _, ing := range sleepSchedule.Spec.Ingresses {
+		r.takeIngressCopy(ctx, sleepSchedule, ing.Name)
+		r.pointIngressToSnorlax(ctx, sleepSchedule, ing.Name)
 	}
 
 	// Scale down each deployment
-	for _, deploymentName := range sleepSchedule.Spec.Deployments {
-		r.storeCurrentReplicas(ctx, sleepSchedule, deploymentName)
-		r.scaleDeployment(ctx, sleepSchedule.Namespace, deploymentName, 0)
+	for _, deploy := range sleepSchedule.Spec.Deployments {
+		r.storeCurrentReplicas(ctx, sleepSchedule, deploy.Name)
+		r.scaleDeployment(ctx, sleepSchedule.Namespace, deploy.Name, 0)
 	}
 }
 
