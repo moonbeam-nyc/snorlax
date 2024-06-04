@@ -92,6 +92,8 @@ You can also then try updating the sleep schedule with `kubectl edit sleepschedu
 
 ## How to develop
 
+(Requires `make`, `minikube`, `helm`, and `docker` to be installed)
+
 Setup Minikube with the CRD and dummy application with sleep schedule:
 ```bash
 make dev-setup
