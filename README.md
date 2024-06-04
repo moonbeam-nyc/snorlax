@@ -108,13 +108,15 @@ make dev-run
 
 - Scale entire namespaces
 - Sleep when no requests are received for a certain period of time
-- Add support for custom wake and sleep actions (e.g. hit a webhook on wake)
+- Add support for custom wake & sleep actions (e.g. hit a webhook on wake)
 - Add support for cron-style schedules (e.g. `0 8 * * *`)
 - Add a button to manually wake up the deployment (instead of auto-waking on request)
 - Custom image/gif for sleeping page
 - Always sleeping mode, reset at a certain time of day
 - Support waking a deployment on TCP connection
-- Scale list of deployments and ingresses from single `SleepSchedule`
+- Select deployments & ingresses by label
+- Support wildcards for deployment & ingress names
+
 
 ## Reach out
 
