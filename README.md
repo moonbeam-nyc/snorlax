@@ -79,6 +79,7 @@ As a common example, if you sleep all of your staging/ephemeral deployments for 
 
 - **Ingress controller awareness**: Snorlax determines which ingress controller you're running so it can create the correct ingress routes for sleep.
 - **Stays awake until next sleep cycle**: If a request is received during the sleep time, the deployment will stay awake until the next sleep cycle
+- **Ignores ELB health checks**: Snorlax ignores health checks from ELBs so that they don't wake up the deployment
 
 ## Try it yourself locally
 

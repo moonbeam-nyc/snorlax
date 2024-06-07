@@ -26,6 +26,10 @@ RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=${TARGETO
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
+
+# Link the GitHub package to this repo
+LABEL org.opencontainers.image.source https://github.com/moonbeam-nyc/snorlax
+
 WORKDIR /
 COPY --from=builder /workspace/manager .
 USER 65532:65532
