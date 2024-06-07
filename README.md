@@ -61,7 +61,7 @@ As a common example, if you sleep all of your staging/ephemeral deployments for 
       - name: your-app-ingress
 
         # (optional, defaults to all deployments) specify which deployments
-        # must be up to wake this ingress
+        # must be ready to wake this ingress
         requires:
           deployments:
           - name: your-app-frontend
