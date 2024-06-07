@@ -63,8 +63,8 @@ As a common example, if you sleep all of your staging/ephemeral deployments for 
         # (optional, defaults to all deployments) specify which deployments
         # must be ready to wake this ingress
         requires:
-          deployments:
-          - name: your-app-frontend
+        - deployment:
+            name: your-app-frontend
 
       # (optional, defaults to UTC) the timezone to use for the input times above
       timezone: 'America/New_York'
