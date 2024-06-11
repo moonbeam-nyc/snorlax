@@ -343,10 +343,10 @@ func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorl
 	// Wait for all deployments and ingresses to wake
 	wg.Wait()
 
-	// Delete the Snorlax proxy
-	err := r.DeleteSnorlaxProxy(ctx, sleepSchedule)
+	// Delete the Snorlax wake server
+	err := r.DeleteSnorlaxWakeServer(ctx, sleepSchedule)
 	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to delete Snorlax proxy")
+		log.FromContext(ctx).Error(err, "Failed to delete Snorlax wake server")
 		return err
 	}
 
@@ -354,10 +354,10 @@ func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorl
 }
 
 func (r *SleepScheduleReconciler) sleep(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
-	// Deploy the Snorlax proxy
-	r.deploySnorlaxProxy(ctx, sleepSchedule)
+	// Deploy the Snorlax wake server
+	r.deploySnorlaxWakeServer(ctx, sleepSchedule)
 
-	// Point each ingress to the Snorlax proxy
+	// Point each ingress to the Snorlax wake server
 	for _, ing := range sleepSchedule.Spec.Ingresses {
 		r.takeIngressCopy(ctx, sleepSchedule, ing.Name)
 		r.pointIngressToSnorlax(ctx, sleepSchedule, ing.Name)
@@ -514,7 +514,7 @@ func (r *SleepScheduleReconciler) takeIngressCopy(ctx context.Context, sleepSche
 	}
 }
 
-func (r *SleepScheduleReconciler) deploySnorlaxProxy(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
+func (r *SleepScheduleReconciler) deploySnorlaxWakeServer(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) {
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 
 	// Create the snorlax service for this ingress
@@ -642,8 +642,8 @@ func (r *SleepScheduleReconciler) deploySnorlaxProxy(ctx context.Context, sleepS
 		}
 	}
 
-	// Create the configmap for proxy data
-	proxyDataConfigMap := &corev1.ConfigMap{
+	// Create the configmap for wake server data
+	wakeServerDataConfigMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-sleep-data", objectName),
 			Namespace: sleepSchedule.Namespace,
@@ -653,21 +653,21 @@ func (r *SleepScheduleReconciler) deploySnorlaxProxy(ctx context.Context, sleepS
 		},
 	}
 
-	ctrl.SetControllerReference(sleepSchedule, proxyDataConfigMap, r.Scheme)
+	ctrl.SetControllerReference(sleepSchedule, wakeServerDataConfigMap, r.Scheme)
 
 	// Check if the configmap already exists
 	existingConfigMap := &corev1.ConfigMap{}
 	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-sleep-data", objectName)}, existingConfigMap)
 	if err != nil && client.IgnoreNotFound(err) != nil {
-		log.FromContext(ctx).Error(err, "Failed to get existing proxy data configmap")
+		log.FromContext(ctx).Error(err, "Failed to get existing wake server data configmap")
 		return
 	}
 
 	// Create the configmap if it doesn't exist
 	if err != nil && client.IgnoreNotFound(err) == nil {
-		err = r.Create(ctx, proxyDataConfigMap)
+		err = r.Create(ctx, wakeServerDataConfigMap)
 		if err != nil {
-			log.FromContext(ctx).Error(err, "Failed to create proxy data configmap")
+			log.FromContext(ctx).Error(err, "Failed to create wake server data configmap")
 			return
 		}
 	}
@@ -696,7 +696,7 @@ func (r *SleepScheduleReconciler) deploySnorlaxProxy(ctx context.Context, sleepS
 					Containers: []corev1.Container{
 						{
 							Name:            "snorlax",
-							Image:           "ghcr.io/moonbeam-nyc/snorlax-proxy:0.5.0",
+							Image:           "ghcr.io/moonbeam-nyc/snorlax-wake-server:0.6.0",
 							ImagePullPolicy: "IfNotPresent",
 							Env: []corev1.EnvVar{
 								{
@@ -837,7 +837,7 @@ func (r *SleepScheduleReconciler) loadIngressCopy(ctx context.Context, sleepSche
 	return nil
 }
 
-func (r *SleepScheduleReconciler) DeleteSnorlaxProxy(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
+func (r *SleepScheduleReconciler) DeleteSnorlaxWakeServer(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
 	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 
 	// Delete the Snorlax service

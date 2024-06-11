@@ -39,9 +39,7 @@ spec:
           spec:
             properties:
               deployments:
-                description: |-
-                  The deployments that will be slept/woken.
-                  SHAPE: {name: "deployment-name"}
+                description: The deployments that will be slept/woken.
                 items:
                   properties:
                     name:
@@ -52,10 +50,9 @@ spec:
                 type: array
               ingresses:
                 description: |-
-                  The names of the ingresses that will be updated to point to the snorlax proxy
-                  which wakes the deployments when a request is received. A copy of the originals
-                  are stored in a configmap.
-                  SHAPE: {name: "ingress-name", requires: [{deployment: {name: "deployment-name"}}]}
+                  The names of the ingresses that will be updated to point to the snorlax wake
+                  server which wakes the deployments when a request is received. A copy of the
+                  originals are stored in a configmap.
                 items:
                   properties:
                     name:

@@ -1,0 +1,7 @@
+services:
+
+  snorlax:
+    image: ghcr.io/moonbeam-nyc/snorlax-wake-server:${VERSION-latest}
+    build: .
+    ports:
+    - "8080"

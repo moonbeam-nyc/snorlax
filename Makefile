@@ -1,28 +1,29 @@
-VERSION = 0.5.0
+VERSION = 0.6.0
 BUNDLE_IMG = ghcr.io/moonbeam-nyc/snorlax-operator-bundle:${VERSION}
 OPERATOR_IMG = ghcr.io/moonbeam-nyc/snorlax-operator:${VERSION}
+WAKE_SERVER_IMG = ghcr.io/moonbeam-nyc/snorlax-wake-server:${VERSION}
 PROXY_IMG = ghcr.io/moonbeam-nyc/snorlax-proxy:${VERSION}
 
 
 ## Workflows
 
-dev-setup: minikube-delete minikube-start proxy-install operator-crd-install dummy-install minikube-tunnel
+dev-setup: minikube-delete minikube-start wake-server-install operator-crd-install dummy-install minikube-tunnel
 dev-run: operator-run
 demo: minikube-reset helm-install-remote dummy-install minikube-tunnel
-release: proxy-release-multiplatform operator-release-multiplatform operator-helmify helm-package
-release-images: proxy-release-multiplatform operator-release-multiplatform
+release: wake-server-release-multiplatform operator-release-multiplatform operator-helmify helm-package
+release-images: wake-server-release-multiplatform operator-release-multiplatform
 
 
 ## Local commands
 
 build:
-	cd proxy && go build -o snorlax
+	cd wake-server && go build -o snorlax
 
 serve: build
-	cd proxy && ./snorlax serve
+	cd wake-server && ./snorlax serve
 
 clean:
-	cd proxy && rm -f snorlax
+	cd wake-server && rm -f snorlax
 
 
 ## Helm commands
@@ -47,24 +48,24 @@ helm-package:
 	mv ./charts/snorlax/snorlax-*.tgz .
 
 
-## Proxy commands
+## Wake server commands
 
-proxy-build:
-	cd proxy && VERSION=$(VERSION) docker compose build snorlax
+wake-server-build:
+	cd wake-server && VERSION=$(VERSION) docker compose build snorlax
 
-proxy-release: proxy-build
-	docker push $(PROXY_IMG)
+wake-server-release: wake-server-build
+	docker push $(WAKE_SERVER_IMG)
 
-proxy-release-multiplatform:
+wake-server-release-multiplatform:
 	- docker buildx create --use --name builder
 	docker buildx use builder
-	cd proxy && docker buildx build --platform linux/amd64,linux/arm64 --tag $(PROXY_IMG) --push .
+	cd wake-server && docker buildx build --platform linux/amd64,linux/arm64 --tag $(WAKE_SERVER_IMG) --push .
 
-proxy-install: proxy-build
-	docker save $(PROXY_IMG) | (eval $$(minikube docker-env) && docker load)
+wake-server-install: wake-server-build
+	docker save $(WAKE_SERVER_IMG) | (eval $$(minikube docker-env) && docker load)
 
-proxy-serve: docker-build
-	docker run -p 8080:8080 $(PROXY_IMG) serve
+wake-server-serve: docker-build
+	docker run -p 8080:8080 $(WAKE_SERVER_IMG) serve
 
 
 ## Minikube commands

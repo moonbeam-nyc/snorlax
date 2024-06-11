@@ -1,7 +1,0 @@
-services:
-
-  snorlax:
-    image: ghcr.io/moonbeam-nyc/snorlax-proxy:${VERSION-latest}
-    build: .
-    ports:
-    - "8080"

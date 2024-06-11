@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./proxy/static/logo-small.png" alt="Logo" width="300">
+  <img src="./wake-server/static/logo-small.png" alt="Logo" width="300">
 </div>
 
 # Snorlax · [![Build Docker image](https://github.com/moonbeam-nyc/snorlax/actions/workflows/build-docker-image.yaml/badge.svg)](https://github.com/moonbeam-nyc/snorlax/actions/workflows/build-docker-image.yaml)
@@ -24,7 +24,7 @@ As a common example, if you sleep all of your staging/ephemeral deployments for 
 
 ## See it in action
 
-![Snorlax Demo](./proxy/static/demo.gif)
+![Snorlax Demo](./wake-server/static/demo.gif)
 
 
 ## Usage
@@ -54,7 +54,7 @@ As a common example, if you sleep all of your staging/ephemeral deployments for 
       - name: your-app-db
       - name: your-app-redis
 
-      # (optional) the ingresses to update and point to the snorlax wake proxy,
+      # (optional) the ingresses to update and point to the snorlax wake server,
       # which wakes your deployment when a request is received while it's
       # sleeping.
       ingresses:
@@ -128,4 +128,4 @@ Wondering how to best use Snorlax? Have questions or ideas for new features?
 
 I'd love to hear, and maybe even build them! Reach out to me at:
 
-<img src="./proxy/static/readme-email-address.png" alt="Contact" width="300">
+<img src="./wake-server/static/readme-email-address.png" alt="Contact" width="300">
