@@ -1,0 +1,17 @@
+services:
+
+  snorlax-proxy:
+    image: ghcr.io/moonbeam-nyc/snorlax-proxy:${VERSION-latest}
+    build: .
+    environment:
+    - NAMESPACE=app-namespace
+    - DATA_CONFIGMAP_NAME=snorlax-sleep-data
+    - DESTINATION_HOST=localhost
+    - DESTINATION_PORT=8001
+    - PORT=8000
+    - KUBECONFIG=/root/.kube/config
+
+  nginx:
+    image: nginx:latest
+    ports:
+    - 8001:80

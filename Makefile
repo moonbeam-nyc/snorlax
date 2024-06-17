@@ -16,14 +16,14 @@ release-images: wake-server-release-multiplatform operator-release-multiplatform
 
 ## Local commands
 
-build:
-	cd wake-server && go build -o snorlax
+local-proxy-build:
+	cd proxy && go build -o snorlax-proxy
 
-serve: build
-	cd wake-server && ./snorlax serve
+local-proxy-run: local-proxy-build
+	cd proxy && ./snorlax-proxy
 
-clean:
-	cd wake-server && rm -f snorlax
+local-proxy-clean:
+	cd proxy && rm -f snorlax-proxy
 
 
 ## Helm commands
@@ -66,6 +66,26 @@ wake-server-install: wake-server-build
 
 wake-server-serve: docker-build
 	docker run -p 8080:8080 $(WAKE_SERVER_IMG) serve
+
+
+## Proxy commands
+
+proxy-build:
+	cd proxy && VERSION=$(VERSION) docker compose build snorlax-proxy
+
+proxy-run:
+	cd proxy && VERSION=$(VERSION) docker compose up
+
+proxy-release: proxy-build
+	docker push $(PROXY_IMG)
+
+proxy-release-multiplatform:
+	- docker buildx create --use --name builder
+	docker buildx use builder
+	cd proxy && docker buildx build --platform linux/amd64,linux/arm64 --tag $(PROXY_IMG) --push .
+
+proxy-install: proxy-build
+	docker save $(PROXY_IMG) | (eval $$(minikube docker-env) && docker load)
 
 
 ## Minikube commands

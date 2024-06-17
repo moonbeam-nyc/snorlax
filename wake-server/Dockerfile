@@ -1,5 +1,5 @@
 #### FIRST STAGE ####
-FROM golang:latest
+FROM golang:latest as builder
 
 # Set the directory
 WORKDIR /app
@@ -27,7 +27,7 @@ LABEL org.opencontainers.image.source https://github.com/moonbeam-nyc/snorlax
 WORKDIR /app
 
 # Copy the binary from the previous stage
-COPY --from=0 /app/snorlax .
+COPY --from=builder /app/snorlax .
 
 # Set the default command
 CMD ["./snorlax", "serve"]
