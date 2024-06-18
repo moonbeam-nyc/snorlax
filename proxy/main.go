@@ -7,6 +7,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,10 +17,17 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+type Proxy struct {
+	target *url.URL
+	proxy  *httputil.ReverseProxy
+}
+
 var (
-	activityThreshold    = 15 * time.Minute
+	activityThreshold    = 1 * time.Minute
 	clientset            *kubernetes.Clientset
 	config               *rest.Config
+	configmap            string
+	deploymentName       string
 	destinationHost      string
 	destinationPort      string
 	healthCheckUserAgent = "ELB-HealthChecker/2.0"
@@ -27,20 +35,30 @@ var (
 	lastActivity         time.Time
 	namespace            string
 	port                 string
-	configmap            string
 )
 
 func init() {
 	var err error
 
+	deploymentName = os.Getenv("DEPLOYMENT_NAME")
 	destinationHost = os.Getenv("DESTINATION_HOST")
 	destinationPort = os.Getenv("DESTINATION_PORT")
-	port = os.Getenv("PORT")
 	kubeconfig = os.Getenv("KUBECONFIG")
 	namespace = os.Getenv("NAMESPACE")
+	port = os.Getenv("PORT")
 
-	if port == "" {
-		port = "8080" // default port if not specified
+	// Check for missing environment variables
+	var missingVars []string
+	variables := []string{"NAMESPACE", "DATA_CONFIGMAP_NAME", "PORT", "DESTINATION_HOST", "DESTINATION_PORT", "DEPLOYMENT_NAME"}
+	for _, variable := range variables {
+		if os.Getenv(variable) == "" {
+			missingVars = append(missingVars, variable)
+		}
+	}
+
+	// Exit if there are missing environment variables
+	if len(missingVars) > 0 {
+		log.Fatalf("missing environment variables: %s", strings.Join(missingVars, ", "))
 	}
 
 	// Initialize the right Kubernetes config
@@ -48,13 +66,13 @@ func init() {
 		log.Default().Print("Using local kubeconfig")
 		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 		if err != nil {
-			log.Fatalf("Failed to create config from KUBECONFIG: %v", err)
+			log.Fatalf("failed to create config from KUBECONFIG: %v", err)
 		}
 	} else {
 		log.Default().Print("Using in-cluster config")
 		config, err = rest.InClusterConfig()
 		if err != nil {
-			log.Fatalf("Failed to create in-cluster config: %v", err)
+			log.Fatalf("failed to create in-cluster config: %v", err)
 		}
 	}
 
@@ -63,11 +81,6 @@ func init() {
 	if err != nil {
 		log.Fatalf("Error creating Kubernetes client: %v", err)
 	}
-}
-
-type Proxy struct {
-	target *url.URL
-	proxy  *httputil.ReverseProxy
 }
 
 func NewProxy(target string) *Proxy {
@@ -90,14 +103,16 @@ func (p *Proxy) Handle(w http.ResponseWriter, r *http.Request) {
 }
 
 func activityDetected() {
-	log.Printf("Activity detected")
+	log.Printf("activity detected for %s", deploymentName)
 	lastActivity = time.Now()
 }
 
 func inactivityDetected() {
+	log.Printf("inactivity detected for %s", deploymentName)
+
 	cm, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), configmap, metav1.GetOptions{})
 	if err != nil {
-		log.Printf("Error getting ConfigMap: %v", err)
+		// log.Printf("error getting configmap: %v", err)
 		return
 	}
 
@@ -105,27 +120,24 @@ func inactivityDetected() {
 		cm.Data = make(map[string]string)
 	}
 
-	now := time.Now().Format(time.RFC3339)
-	cm.Data["last_non_health_check_request"] = now
+	// now := time.Now().Format(time.RFC3339)
+	// cm.Data["last_non_health_check_request"] = now
 
-	_, err = clientset.CoreV1().ConfigMaps(namespace).Update(context.Background(), cm, metav1.UpdateOptions{})
-	if err != nil {
-		log.Printf("Error updating ConfigMap: %v", err)
-	}
+	// _, err = clientset.CoreV1().ConfigMaps(namespace).Update(context.Background(), cm, metav1.UpdateOptions{})
+	// if err != nil {
+	// 	log.Printf("error updating configmap: %v", err)
+	// }
 }
 
 func detectInactivity() {
 	go func() {
-		// First wait for a specified amount of time
-		// FIXME: this should be based on a timestamp
-		time.Sleep(activityThreshold)
-
 		for {
-			// Wait one minute
-			time.Sleep(time.Minute)
+			time.Sleep(time.Second * 5)
+
+			log.Printf("checking last activity: %v", lastActivity)
 
 			// Check if it's been inactive
-			if time.Since(lastActivity) > activityThreshold {
+			if !lastActivity.IsZero() && time.Since(lastActivity) > activityThreshold {
 				inactivityDetected()
 			}
 		}
