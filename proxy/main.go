@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -32,7 +35,6 @@ var (
 	destinationPort      string
 	healthCheckUserAgent = "ELB-HealthChecker/2.0"
 	kubeconfig           string
-	lastActivity         time.Time
 	namespace            string
 	port                 string
 )
@@ -40,6 +42,7 @@ var (
 func init() {
 	var err error
 
+	configmap = os.Getenv("DATA_CONFIGMAP_NAME")
 	deploymentName = os.Getenv("DEPLOYMENT_NAME")
 	destinationHost = os.Getenv("DESTINATION_HOST")
 	destinationPort = os.Getenv("DESTINATION_PORT")
@@ -79,7 +82,7 @@ func init() {
 	// Create the k8s client
 	clientset, err = kubernetes.NewForConfig(config)
 	if err != nil {
-		log.Fatalf("Error creating Kubernetes client: %v", err)
+		log.Fatalf("error creating Kubernetes client: %v", err)
 	}
 }
 
@@ -102,31 +105,60 @@ func (p *Proxy) Handle(w http.ResponseWriter, r *http.Request) {
 	p.proxy.ServeHTTP(w, r)
 }
 
+func patchConfigMap(name string, data map[string]string) error {
+	patchData := make(map[string]interface{})
+	patchData["data"] = data
+
+	patchBytes, err := json.Marshal(patchData)
+	if err != nil {
+		return fmt.Errorf("error marshaling patch data: %v", err)
+	}
+
+	_, err = clientset.CoreV1().ConfigMaps(namespace).Patch(context.Background(), name, types.MergePatchType, patchBytes, metav1.PatchOptions{})
+	if err != nil {
+		return fmt.Errorf("error patching configmap: %v", err)
+	}
+
+	return nil
+}
+
 func activityDetected() {
 	log.Printf("activity detected for %s", deploymentName)
-	lastActivity = time.Now()
+
+	now := time.Now().Format(time.RFC3339)
+	data := map[string]string{
+		fmt.Sprintf("deployment.%s.last-active-at", deploymentName): now,
+	}
+
+	patchConfigMap(configmap, data)
 }
 
 func inactivityDetected() {
 	log.Printf("inactivity detected for %s", deploymentName)
 
-	cm, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), configmap, metav1.GetOptions{})
+	now := time.Now().Format(time.RFC3339)
+	data := map[string]string{
+		fmt.Sprintf("deployment.%s.last-inactive-at", deploymentName): now,
+	}
+
+	patchConfigMap(configmap, data)
+}
+
+func getLastActivity() time.Time {
+	// Get the configmap
+	configmap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), os.Getenv("DATA_CONFIGMAP_NAME"), metav1.GetOptions{})
 	if err != nil {
 		// log.Printf("error getting configmap: %v", err)
-		return
+		return time.Time{}
 	}
 
-	if cm.Data == nil {
-		cm.Data = make(map[string]string)
+	lastActivity, err := time.Parse(time.RFC3339, configmap.Data[fmt.Sprintf("deployment.%s.last-active-at", deploymentName)])
+	if err != nil {
+		// log.Printf("error parsing last active time: %v", err)
+		return time.Time{}
 	}
 
-	// now := time.Now().Format(time.RFC3339)
-	// cm.Data["last_non_health_check_request"] = now
-
-	// _, err = clientset.CoreV1().ConfigMaps(namespace).Update(context.Background(), cm, metav1.UpdateOptions{})
-	// if err != nil {
-	// 	log.Printf("error updating configmap: %v", err)
-	// }
+	return lastActivity
 }
 
 func detectInactivity() {
@@ -134,6 +166,7 @@ func detectInactivity() {
 		for {
 			time.Sleep(time.Second * 5)
 
+			lastActivity := getLastActivity()
 			log.Printf("checking last activity: %v", lastActivity)
 
 			// Check if it's been inactive

@@ -3,7 +3,6 @@ module github.com/moonbeam-nyc/snorlax-proxy
 go 1.22.3
 
 require (
-	github.com/elazarl/goproxy v0.0.0-20231117061959-7cc037d33fb5
 	k8s.io/apimachinery v0.30.1
 	k8s.io/client-go v0.30.1
 )
