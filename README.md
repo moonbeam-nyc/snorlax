@@ -68,6 +68,14 @@ As a common example, if you sleep all of your staging/ephemeral deployments for 
 
       # (optional, defaults to UTC) the timezone to use for the input times above
       timezone: 'America/New_York'
+      # (optional), Set the resource request and limits of the snorlax deployment
+      resources:
+        requests:
+          cpu: 10m
+          memory: 64Mi
+        limits:
+          cpu: 50m
+          memory: 128Mi
     ```
 
 3. Apply the `SleepSchedule` resource
