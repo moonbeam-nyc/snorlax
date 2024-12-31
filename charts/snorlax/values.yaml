@@ -10,16 +10,6 @@ controllerManager:
       capabilities:
         drop:
         - ALL
-    image:
-      repository: gcr.io/kubebuilder/kube-rbac-proxy
-      tag: v0.15.0
-    resources:
-      limits:
-        cpu: 500m
-        memory: 128Mi
-      requests:
-        cpu: 5m
-        memory: 64Mi
   manager:
     args:
     - --health-probe-bind-address=:8081
