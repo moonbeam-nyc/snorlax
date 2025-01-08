@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	cc "github.com/ivanpirog/coloredcobra"
 	"github.com/spf13/cobra"
@@ -84,7 +85,13 @@ func serve() {
 			fmt.Println("Received wake request:", r)
 			k8sClient := createK8sClient()
 
-			patchData, err := json.Marshal(map[string]interface{}{"data": map[string]string{"received-request": "true"}})
+			// Store the current time as RFC3339 format
+			currentTime := time.Now().Format(time.RFC3339)
+			patchData, err := json.Marshal(map[string]interface{}{
+				"data": map[string]string{
+					"request-received-at": currentTime,
+				},
+			})
 			if err != nil {
 				log.Fatalf("Failed to marshal configmap: %v", err)
 			}

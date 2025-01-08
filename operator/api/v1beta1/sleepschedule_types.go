@@ -67,6 +67,14 @@ type SleepScheduleStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	Awake bool `json:"awake,omitempty"`
+
+	// The time of the last wake request received
+	// +optional
+	LastRequestTime string `json:"lastRequestTime,omitempty"`
+
+	// The time when the app was last put to sleep
+	// +optional
+	LastSleepTime string `json:"lastSleepTime,omitempty"`
 }
 
 //+kubebuilder:object:root=true

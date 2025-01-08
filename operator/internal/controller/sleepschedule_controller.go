@@ -203,26 +203,49 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		shouldSleep = now.After(sleepDatetime) && now.Before(wakeDatetime)
 	}
 
-	// fmt.Println("Checking if the app should be awake or asleep")
-	// fmt.Println("now:", now)
-	// fmt.Println("wakeDatetime:", wakeDatetime)
-	// fmt.Println("sleepDatetime:", sleepDatetime)
-	// fmt.Print("shouldSleep:", shouldSleep, "\n\n")
-
 	// Check if the configmaps request-received key was set to "true"
 	var wakeRequestReceived bool
 	configMap := &corev1.ConfigMap{}
 	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-sleep-data", objectName)}, configMap)
 	if err != nil {
 		wakeRequestReceived = false
-	} else {
-		wakeRequestReceived = configMap.Data["received-request"] == "true"
 	}
+
+	if timestamp, exists := configMap.Data["request-received-at"]; exists {
+		// Parse the stored timestamp
+		lastRequestTime, err := time.Parse(time.RFC3339, timestamp)
+		if err != nil {
+			wakeRequestReceived = false
+		} else {
+			wakeRequestReceived = true
+		}
+
+		// Update the status with the last request time
+		sleepSchedule.Status.LastRequestTime = lastRequestTime.Format(time.RFC3339)
+		err = r.Status().Patch(ctx, sleepSchedule, client.MergeFrom(sleepSchedule.DeepCopy()))
+		if err != nil {
+			log.Error(err, "failed to patch SleepSchedule status")
+		}
+	} else {
+		wakeRequestReceived = false
+	}
+
+	// fmt.Println("Checking app sleep state")
+	// fmt.Println("awake:", awake)
+	// fmt.Println("wakeRequestReceived:", wakeRequestReceived)
+	// fmt.Print("shouldSleep:", shouldSleep, "\n\n")
 
 	// log.Info(fmt.Sprintf("wakeRequestReceived: %t", wakeRequestReceived))
 
 	if awake && shouldSleep && !wakeRequestReceived {
 		log.Info("Going to sleep")
+		// Store the current time as the last sleep time
+		sleepSchedule.Status.LastSleepTime = time.Now().Format(time.RFC3339)
+		err = r.Status().Update(ctx, sleepSchedule)
+		if err != nil {
+			log.Error(err, "failed to update LastSleepTime")
+			return ctrl.Result{}, err
+		}
 		r.sleep(ctx, sleepSchedule)
 		log.Info("Successfully asleep")
 	} else if !awake && (!shouldSleep || wakeRequestReceived) {
@@ -251,10 +274,11 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 func (r *SleepScheduleReconciler) finalizeSleepSchedule(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
 	log := log.FromContext(ctx)
+	objectName := fmt.Sprintf("snorlax-%s", sleepSchedule.Name)
 
-	log.Info("finalizing the sleepschedule, waking the deployment")
+	log.Info("finalizing the sleepschedule")
 
-	// Wake the environment
+	// Wake the environment if it's asleep
 	if !sleepSchedule.Status.Awake {
 		err := r.wake(ctx, sleepSchedule)
 		if err != nil {
@@ -262,10 +286,40 @@ func (r *SleepScheduleReconciler) finalizeSleepSchedule(ctx context.Context, sle
 		}
 	}
 
+	// Clean up ingress copies
+	for _, ing := range sleepSchedule.Spec.Ingresses {
+		configMap := &corev1.ConfigMap{}
+		err := r.Get(ctx, client.ObjectKey{
+			Namespace: sleepSchedule.Namespace,
+			Name:      fmt.Sprintf("%s-ingress-copy-%s", objectName, ing.Name),
+		}, configMap)
+		if err == nil {
+			if err := r.Delete(ctx, configMap); err != nil {
+				log.Error(err, "failed to delete ingress copy configmap")
+			}
+		}
+	}
+
+	// Clean up sleep data
+	sleepData := &corev1.ConfigMap{}
+	err := r.Get(ctx, client.ObjectKey{
+		Namespace: sleepSchedule.Namespace,
+		Name:      fmt.Sprintf("%s-sleep-data", objectName),
+	}, sleepData)
+	if err == nil {
+		if err := r.Delete(ctx, sleepData); err != nil {
+			log.Error(err, "failed to delete sleep data configmap")
+		}
+	}
+
+	// Clean up wake server components
+	if err := r.DeleteSnorlaxWakeServer(ctx, sleepSchedule); err != nil {
+		log.Error(err, "failed to delete wake server components")
+	}
+
 	// Remove the finalizer from the SleepSchedule
 	controllerutil.RemoveFinalizer(sleepSchedule, finalizer)
-	err := r.Update(context.TODO(), sleepSchedule)
-	if err != nil {
+	if err := r.Update(ctx, sleepSchedule); err != nil {
 		return err
 	}
 
@@ -649,7 +703,7 @@ func (r *SleepScheduleReconciler) deploySnorlaxWakeServer(ctx context.Context, s
 			Namespace: sleepSchedule.Namespace,
 		},
 		Data: map[string]string{
-			"received-request": "false",
+			"request-received-at": "", // Empty string indicates no request received yet
 		},
 	}
 
@@ -903,5 +957,11 @@ func (r *SleepScheduleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		WithOptions(controller.Options{MaxConcurrentReconciles: 5}).
 		For(&snorlaxv1beta1.SleepSchedule{}).
 		Owns(&corev1.ConfigMap{}).
+		Owns(&appsv1.Deployment{}).
+		Owns(&networkingv1.Ingress{}).
+		Owns(&corev1.Service{}).
+		Owns(&corev1.ServiceAccount{}).
+		Owns(&rbacv1.Role{}).
+		Owns(&rbacv1.RoleBinding{}).
 		Complete(r)
 }

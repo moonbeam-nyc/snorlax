@@ -97,6 +97,12 @@ spec:
                   INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
                   Important: Run "make" to regenerate code after modifying this file
                 type: boolean
+              lastRequestTime:
+                description: The time of the last wake request received
+                type: string
+              lastSleepTime:
+                description: The time when the app was last put to sleep
+                type: string
             type: object
         type: object
     served: true
