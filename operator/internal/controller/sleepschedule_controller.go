@@ -165,9 +165,9 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// Update status based on the actual check
 	sleepSchedule.Status.Awake = awake
-	err = r.Status().Patch(ctx, sleepSchedule, client.MergeFrom(sleepSchedule.DeepCopy()))
+	err = r.Status().Update(ctx, sleepSchedule)
 	if err != nil {
-		log.Error(err, "failed to patch SleepSchedule status")
+		log.Error(err, "failed to update SleepSchedule status")
 		return ctrl.Result{}, err
 	}
 
@@ -222,9 +222,9 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 		// Update the status with the last request time
 		sleepSchedule.Status.LastRequestTime = lastRequestTime.Format(time.RFC3339)
-		err = r.Status().Patch(ctx, sleepSchedule, client.MergeFrom(sleepSchedule.DeepCopy()))
+		err = r.Status().Update(ctx, sleepSchedule)
 		if err != nil {
-			log.Error(err, "failed to patch SleepSchedule status")
+			log.Error(err, "failed to update SleepSchedule status")
 		}
 	} else {
 		wakeRequestReceived = false
