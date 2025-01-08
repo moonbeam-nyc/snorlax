@@ -203,50 +203,48 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		shouldSleep = now.After(sleepDatetime) && now.Before(wakeDatetime)
 	}
 
-	// Check if the configmaps request-received key was set to "true"
-	var wakeRequestReceived bool
+	// Determine if the app was woken up by a request
+	wakeRequestReceived := false
 	configMap := &corev1.ConfigMap{}
 	err = r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: fmt.Sprintf("%s-sleep-data", objectName)}, configMap)
-	if err != nil {
-		wakeRequestReceived = false
+	if err == nil {
+		if timestamp, exists := configMap.Data["request-received-at"]; exists {
+			// Parse the stored timestamp
+			lastRequestTime, err := time.Parse(time.RFC3339, timestamp)
+			if err == nil {
+				// Update the status with the last request time
+				sleepSchedule.Status.LastRequestTime = lastRequestTime.Format(time.RFC3339)
+				err = r.Status().Update(ctx, sleepSchedule)
+				if err != nil {
+					log.Error(err, "failed to update SleepSchedule status")
+				}
+
+				// Only consider wake requests that happened after the last sleep time
+				if sleepSchedule.Status.LastSleepTime != "" {
+					lastSleepTime, err := time.Parse(time.RFC3339, sleepSchedule.Status.LastSleepTime)
+					if err == nil {
+						timeSinceSleep := lastRequestTime.Sub(lastSleepTime)
+						wakeRequestReceived = timeSinceSleep.Seconds() > 0
+					}
+				}
+			}
+		}
 	}
 
-	if timestamp, exists := configMap.Data["request-received-at"]; exists {
-		// Parse the stored timestamp
-		lastRequestTime, err := time.Parse(time.RFC3339, timestamp)
-		if err != nil {
-			wakeRequestReceived = false
-		} else {
-			wakeRequestReceived = true
-		}
-
-		// Update the status with the last request time
-		sleepSchedule.Status.LastRequestTime = lastRequestTime.Format(time.RFC3339)
-		err = r.Status().Update(ctx, sleepSchedule)
-		if err != nil {
-			log.Error(err, "failed to update SleepSchedule status")
-		}
-	} else {
-		wakeRequestReceived = false
-	}
-
-	// fmt.Println("Checking app sleep state")
-	// fmt.Println("awake:", awake)
-	// fmt.Println("wakeRequestReceived:", wakeRequestReceived)
-	// fmt.Print("shouldSleep:", shouldSleep, "\n\n")
-
-	// log.Info(fmt.Sprintf("wakeRequestReceived: %t", wakeRequestReceived))
-
+	// Wake or sleep, based on current state
 	if awake && shouldSleep && !wakeRequestReceived {
 		log.Info("Going to sleep")
+		r.sleep(ctx, sleepSchedule)
+
 		// Store the current time as the last sleep time
+		// NOTE: we set this after so we know when sleep actually started
 		sleepSchedule.Status.LastSleepTime = time.Now().Format(time.RFC3339)
 		err = r.Status().Update(ctx, sleepSchedule)
 		if err != nil {
 			log.Error(err, "failed to update LastSleepTime")
 			return ctrl.Result{}, err
 		}
-		r.sleep(ctx, sleepSchedule)
+
 		log.Info("Successfully asleep")
 	} else if !awake && (!shouldSleep || wakeRequestReceived) {
 		log.Info("Waking up")
@@ -422,6 +420,11 @@ func (r *SleepScheduleReconciler) sleep(ctx context.Context, sleepSchedule *snor
 		r.storeCurrentReplicas(ctx, sleepSchedule, deploy.Name)
 		r.scaleDeployment(ctx, sleepSchedule.Namespace, deploy.Name, 0)
 	}
+
+	// Wait for each deployment to scale down
+	for _, deploy := range sleepSchedule.Spec.Deployments {
+		r.waitForDeploymentToSleep(ctx, sleepSchedule.Namespace, deploy.Name)
+	}
 }
 
 func (r *SleepScheduleReconciler) getDeploymentReplicas(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule, deploymentName string) (int32, error) {
@@ -520,6 +523,27 @@ func (r *SleepScheduleReconciler) waitForDeploymentToWake(ctx context.Context, n
 
 		if deployment.Status.ReadyReplicas == *deployment.Spec.Replicas {
 			logger.Info(fmt.Sprintf("Deployment replicas are ready: %s", deploymentName))
+			break
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func (r *SleepScheduleReconciler) waitForDeploymentToSleep(ctx context.Context, namespace, deploymentName string) {
+	logger := log.FromContext(ctx)
+
+	for {
+		logger.Info(fmt.Sprintf("Waiting for deployment to sleep: %s", deploymentName))
+		deployment := &appsv1.Deployment{}
+		err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: deploymentName}, deployment)
+		if err != nil {
+			logger.Error(err, "Failed to get Deployment")
+			return
+		}
+
+		if deployment.Status.Replicas == 0 {
+			logger.Info(fmt.Sprintf("Deployment is asleep: %s", deploymentName))
 			break
 		}
 
