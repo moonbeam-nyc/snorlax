@@ -69,6 +69,7 @@ const finalizer = "finalizer.snorlax.moonbeam.nyc"
 //+kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;watch;list;create;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;watch;list;create;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;watch;list;create;delete
+//+kubebuilder:rbac:groups=core,resources=pods,verbs=get;watch;list
 
 func (r *SleepScheduleReconciler) ProcessSleepSchedule(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) (*SleepScheduleData, error) {
 	log := log.FromContext(ctx)
@@ -236,10 +237,20 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		log.Info("Going to sleep")
 		r.sleep(ctx, sleepSchedule)
 
-		// Store the current time as the last sleep time
-		// NOTE: we set this after so we know when sleep actually started
-		sleepSchedule.Status.LastSleepTime = time.Now().Format(time.RFC3339)
-		err = r.Status().Update(ctx, sleepSchedule)
+		// Get a fresh copy of the object before updating status
+		freshSleepSchedule := &snorlaxv1beta1.SleepSchedule{}
+		err := r.Get(ctx, client.ObjectKey{
+			Namespace: sleepSchedule.Namespace,
+			Name:      sleepSchedule.Name,
+		}, freshSleepSchedule)
+		if err != nil {
+			log.Error(err, "failed to get fresh copy of SleepSchedule")
+			return ctrl.Result{}, err
+		}
+
+		// Update the status on the fresh copy
+		freshSleepSchedule.Status.LastSleepTime = time.Now().Format(time.RFC3339)
+		err = r.Status().Update(ctx, freshSleepSchedule)
 		if err != nil {
 			log.Error(err, "failed to update LastSleepTime")
 			return ctrl.Result{}, err
@@ -335,7 +346,8 @@ func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule 
 		deployment := &appsv1.Deployment{}
 		err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: deploy.Name}, deployment)
 		if err != nil {
-			return false, err
+			fmt.Printf("error getting deployment %s: %v, continuing\n", deploy.Name, err)
+			continue
 		}
 
 		if *deployment.Spec.Replicas == 0 {
@@ -535,6 +547,8 @@ func (r *SleepScheduleReconciler) waitForDeploymentToSleep(ctx context.Context, 
 
 	for {
 		logger.Info(fmt.Sprintf("Waiting for deployment to sleep: %s", deploymentName))
+
+		// Get the deployment to find its selector
 		deployment := &appsv1.Deployment{}
 		err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: deploymentName}, deployment)
 		if err != nil {
@@ -542,8 +556,17 @@ func (r *SleepScheduleReconciler) waitForDeploymentToSleep(ctx context.Context, 
 			return
 		}
 
-		if deployment.Status.Replicas == 0 {
-			logger.Info(fmt.Sprintf("Deployment is asleep: %s", deploymentName))
+		// List all pods matching the deployment's selector
+		pods := &corev1.PodList{}
+		err = r.List(ctx, pods, client.InNamespace(namespace), client.MatchingLabels(deployment.Spec.Selector.MatchLabels))
+		if err != nil {
+			logger.Error(err, "Failed to list pods")
+			return
+		}
+
+		// Check if any pods still exist
+		if len(pods.Items) == 0 {
+			logger.Info(fmt.Sprintf("Deployment is asleep (all pods terminated): %s", deploymentName))
 			break
 		}
 
