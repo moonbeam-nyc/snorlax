@@ -346,22 +346,38 @@ func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule 
 		deployment := &appsv1.Deployment{}
 		err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: deploy.Name}, deployment)
 		if err != nil {
-			fmt.Printf("error getting deployment %s: %v, continuing\n", deploy.Name, err)
+			if client.IgnoreNotFound(err) == nil {
+				log.FromContext(ctx).Info(fmt.Sprintf("Deployment %s not found, skipping", deploy.Name))
+				continue
+			}
+			log.FromContext(ctx).Error(err, fmt.Sprintf("error getting deployment %s", deploy.Name))
 			continue
 		}
 
-		if *deployment.Spec.Replicas == 0 {
-			return false, nil
+		if *deployment.Spec.Replicas > 0 {
+			return true, nil
 		}
 	}
 
-	return true, nil
+	return false, nil
 }
 
 func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {
 	// Scale up each deployment
 	var wg sync.WaitGroup
 	for _, deploy := range sleepSchedule.Spec.Deployments {
+		// Check if deployment exists before adding to waitgroup
+		deployment := &appsv1.Deployment{}
+		err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: deploy.Name}, deployment)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				log.FromContext(ctx).Info(fmt.Sprintf("Deployment %s not found, skipping", deploy.Name))
+				continue
+			}
+			log.FromContext(ctx).Error(err, fmt.Sprintf("error getting deployment %s", deploy.Name))
+			continue
+		}
+
 		wg.Add(1)
 		go func(name string) {
 			defer wg.Done()
@@ -381,6 +397,18 @@ func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorl
 
 	// Have each ingress wait for its requirements and load the copy
 	for _, ing := range sleepSchedule.Spec.Ingresses {
+		// Check if ingress exists before adding to waitgroup
+		ingress := &networkingv1.Ingress{}
+		err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: ing.Name}, ingress)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				log.FromContext(ctx).Info(fmt.Sprintf("Ingress %s not found, skipping", ing.Name))
+				continue
+			}
+			log.FromContext(ctx).Error(err, fmt.Sprintf("error getting ingress %s", ing.Name))
+			continue
+		}
+
 		wg.Add(1)
 		go func(ing snorlaxv1beta1.Ingress) error {
 			defer wg.Done()
@@ -423,18 +451,54 @@ func (r *SleepScheduleReconciler) sleep(ctx context.Context, sleepSchedule *snor
 
 	// Point each ingress to the Snorlax wake server
 	for _, ing := range sleepSchedule.Spec.Ingresses {
+		// Check if ingress exists before proceeding
+		ingress := &networkingv1.Ingress{}
+		err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: ing.Name}, ingress)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				log.FromContext(ctx).Info(fmt.Sprintf("Ingress %s not found, skipping", ing.Name))
+				continue
+			}
+			log.FromContext(ctx).Error(err, fmt.Sprintf("error getting ingress %s", ing.Name))
+			continue
+		}
+
 		r.takeIngressCopy(ctx, sleepSchedule, ing.Name)
 		r.pointIngressToSnorlax(ctx, sleepSchedule, ing.Name)
 	}
 
 	// Scale down each deployment
 	for _, deploy := range sleepSchedule.Spec.Deployments {
+		// Check if deployment exists before proceeding
+		deployment := &appsv1.Deployment{}
+		err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: deploy.Name}, deployment)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				log.FromContext(ctx).Info(fmt.Sprintf("Deployment %s not found, skipping", deploy.Name))
+				continue
+			}
+			log.FromContext(ctx).Error(err, fmt.Sprintf("error getting deployment %s", deploy.Name))
+			continue
+		}
+
 		r.storeCurrentReplicas(ctx, sleepSchedule, deploy.Name)
 		r.scaleDeployment(ctx, sleepSchedule.Namespace, deploy.Name, 0)
 	}
 
 	// Wait for each deployment to scale down
 	for _, deploy := range sleepSchedule.Spec.Deployments {
+		// Check if deployment exists before waiting
+		deployment := &appsv1.Deployment{}
+		err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: deploy.Name}, deployment)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				log.FromContext(ctx).Info(fmt.Sprintf("Deployment %s not found, skipping wait", deploy.Name))
+				continue
+			}
+			log.FromContext(ctx).Error(err, fmt.Sprintf("error getting deployment %s", deploy.Name))
+			continue
+		}
+
 		r.waitForDeploymentToSleep(ctx, sleepSchedule.Namespace, deploy.Name)
 	}
 }
@@ -913,21 +977,25 @@ func (r *SleepScheduleReconciler) loadIngressCopy(ctx context.Context, sleepSche
 	configMap := &corev1.ConfigMap{}
 	err := r.Get(ctx, client.ObjectKey{Namespace: sleepSchedule.Namespace, Name: objectName + "-ingress-copy-" + ingressName}, configMap)
 	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to get ConfigMap")
-		return err
+		if client.IgnoreNotFound(err) == nil {
+			log.FromContext(ctx).Info(fmt.Sprintf("Ingress copy configmap for %s not found, skipping restore", ingressName))
+			return nil
+		}
+		log.FromContext(ctx).Error(err, fmt.Sprintf("error getting ingress copy configmap for %s", ingressName))
+		return nil
 	}
 
 	ingress := &networkingv1.Ingress{}
 	err = yaml.Unmarshal([]byte(configMap.Data["ingressYAML"]), ingress)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to unmarshal Ingress YAML")
-		return err
+		return nil
 	}
 
 	ingressSpecJSON, err := json.Marshal(ingress.Spec)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to marshal Ingress spec into JSON")
-		return err
+		return nil
 	}
 
 	err = r.Patch(ctx, ingress, client.RawPatch(types.MergePatchType, []byte(fmt.Sprintf(`{"spec": %s}`, ingressSpecJSON))))
