@@ -1,4 +1,4 @@
-VERSION = 0.6.1
+VERSION = 0.7.0
 BUNDLE_IMG = ghcr.io/moonbeam-nyc/snorlax-operator-bundle:${VERSION}
 OPERATOR_IMG = ghcr.io/moonbeam-nyc/snorlax-operator:${VERSION}
 WAKE_SERVER_IMG = ghcr.io/moonbeam-nyc/snorlax-wake-server:${VERSION}

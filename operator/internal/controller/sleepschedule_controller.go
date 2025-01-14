@@ -861,7 +861,7 @@ func (r *SleepScheduleReconciler) deploySnorlaxWakeServer(ctx context.Context, s
 					Containers: []corev1.Container{
 						{
 							Name:            "snorlax",
-							Image:           "ghcr.io/moonbeam-nyc/snorlax-wake-server:0.6.0",
+							Image:           "ghcr.io/moonbeam-nyc/snorlax-wake-server:0.7.0",
 							ImagePullPolicy: "IfNotPresent",
 							Env: []corev1.EnvVar{
 								{

@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/moonbeam-nyc/snorlax-operator
-  newTag: 0.6.1
+  newTag: 0.7.0
