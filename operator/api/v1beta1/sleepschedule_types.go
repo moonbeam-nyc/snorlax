@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -47,6 +48,8 @@ type SleepScheduleSpec struct {
 	// server which wakes the deployments when a request is received. A copy of the
 	// originals are stored in a configmap.
 	Ingresses []Ingress `json:"ingresses,omitempty"`
+
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 type Deployment struct {

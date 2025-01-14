@@ -877,6 +877,13 @@ func (r *SleepScheduleReconciler) deploySnorlaxWakeServer(ctx context.Context, s
 									Value: sleepSchedule.Namespace,
 								},
 							},
+							Resources: func() corev1.ResourceRequirements {
+								log.FromContext(ctx).Info(fmt.Sprintf("Ingress restored: %+v\n", *sleepSchedule.Spec.Resources))
+								if sleepSchedule.Spec.Resources != nil {
+									return *sleepSchedule.Spec.Resources
+								}
+								return corev1.ResourceRequirements{}
+							}(),
 						},
 					},
 				},
