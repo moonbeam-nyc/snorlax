@@ -76,19 +76,42 @@ spec:
                   - name
                   type: object
                 type: array
-              sleepTime:
-                description: The time that the deployment will start sleeping
-                type: string
+              dailyWindow:
+                description: The daily times that the deployment will wake up and start sleeping
+                properties:
+                  wakeTime:
+                    description: The time that the deployment will wake up
+                    type: string
+                  sleepTime:
+                    description: The time that the deployment will start sleeping
+                    type: string
+                required:
+                - wakeTime
+                - sleepTime
+                type: object
+              cronSchedule:
+                description: The cron schedule that will be used to determine when the deployment will sleep/wake
+                properties:
+                  wakeSchedule:
+                    description: The cron schedule for when the deployment should wake up
+                    type: string
+                  sleepSchedule: 
+                    description: The cron schedule for when the deployment should go to sleep
+                    type: string
+                required:
+                - wakeSchedule
+                - sleepSchedule
+                type: object
               timezone:
                 description: The timezone that the input times are based in
                 type: string
-              wakeTime:
-                description: The time that the deployment will wake up
-                type: string
-            required:
-            - sleepTime
-            - timezone
-            - wakeTime
+            oneOf:
+            - required:
+              - dailyWindow
+              - timezone
+            - required:
+              - cronSchedule
+              - timezone
             type: object
           status:
             description: SleepScheduleStatus defines the observed state of SleepSchedule

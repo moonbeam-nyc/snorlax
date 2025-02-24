@@ -4,8 +4,9 @@ metadata:
   namespace: default
   name: dummy
 spec:
-  wakeTime: '10:00am'
-  sleepTime: '10:01am'
+  dailyWindow:
+    wakeTime: '10:00am'
+    sleepTime: '10:01am'
   timezone: 'America/New_York'
   deployments:
   - name: dummy-frontend

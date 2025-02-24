@@ -36,10 +36,11 @@ As a common example, if you sleep all of your staging/ephemeral deployments for 
     helm install snorlax moonbeam/snorlax --create-namespace --namespace snorlax
     ```
 
-2. Create your `SleepSchedule` resource to define the schedule for the deployment
+2. Create your `SleepSchedule` resource to define the schedule for the deployment. You can use either a daily window or cron schedule:
+
+    **Using Daily Window:**
     ```yaml
     # filename: your-app-sleep-schedule.yaml
-
     apiVersion: snorlax.moonbeam.nyc/v1beta1
     kind: SleepSchedule
     metadata:
@@ -47,12 +48,16 @@ As a common example, if you sleep all of your staging/ephemeral deployments for 
       name: your-app
     spec:
       # Required fields
-      wakeTime: '8:00am'
-      sleepTime: '10:00pm'
+      dailyWindow:
+        wakeTime: '8:00am'
+        sleepTime: '10:00pm'
       deployments:
       - name: your-app-frontend
       - name: your-app-db
       - name: your-app-redis
+
+      # (optional, defaults to UTC) timezone for the sleep schedule using IANA format
+      timezone: 'America/New_York'
 
       # (optional) the ingresses to update and point to the snorlax wake server,
       # which wakes your deployment when a request is received while it's
@@ -65,9 +70,33 @@ As a common example, if you sleep all of your staging/ephemeral deployments for 
         requires:
         - deployment:
             name: your-app-frontend
+    ```
 
-      # (optional, defaults to UTC) the timezone to use for the input times above
+    **Using Cron Schedule:**
+    ```yaml
+    # filename: your-app-sleep-schedule.yaml
+    apiVersion: snorlax.moonbeam.nyc/v1beta1
+    kind: SleepSchedule
+    metadata:
+      namespace: your-app-namespace
+      name: your-app
+    spec:
+      # Required fields
+      cronSchedule:
+        wakeSchedule: '0 8 * * 1-5'  # Wake at 8am on weekdays
+        sleepSchedule: '0 22 * * *'  # Sleep at 10pm daily
+      deployments:
+      - name: your-app-frontend
+      - name: your-app-db
+      - name: your-app-redis
+
+      # Optional fields
       timezone: 'America/New_York'
+      ingresses:
+      - name: your-app-ingress
+        requires:
+        - deployment:
+            name: your-app-frontend
     ```
 
 3. Apply the `SleepSchedule` resource
@@ -77,7 +106,8 @@ As a common example, if you sleep all of your staging/ephemeral deployments for 
 
 ## Other features
 
-- **Ingress controller awareness**: Snorlax determines which ingress controller you're running so it can create the correct ingress routes for sleep.
+- **Flexible scheduling**: Support for both daily windows and cron expressions for more complex scheduling needs
+- **Ingress controller awareness**: Snorlax determines which ingress controller you're running so it can create the correct ingress routes for sleep
 - **Stays awake until next sleep cycle**: If a request is received during the sleep time, the deployment will stay awake until the next sleep cycle
 - **Ignores ELB health checks**: Snorlax ignores health checks from ELBs so that they don't wake up the deployment
 
@@ -114,7 +144,6 @@ make dev-run
 - Scale entire namespaces
 - Sleep when no requests are received for a certain period of time
 - Add support for custom wake & sleep actions (e.g. hit a webhook on wake)
-- Add support for cron-style schedules (e.g. `0 8 * * *`)
 - Add a button to manually wake up the deployment (instead of auto-waking on request)
 - Custom image/gif for sleeping page
 - Always sleeping mode, reset at a certain time of day

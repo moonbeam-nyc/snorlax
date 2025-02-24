@@ -36,7 +36,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	snorlaxv1beta1 "moonbeam-nyc/snorlax/api/v1beta1"
-	"moonbeam-nyc/snorlax/internal/controller"
+	controller "moonbeam-nyc/snorlax/internal/controller"
+	util "moonbeam-nyc/snorlax/internal/util"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -124,10 +125,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.SleepScheduleReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	if err = controller.NewReconciler(
+		mgr.GetClient(),
+		mgr.GetScheme(),
+		util.RealTime{},
+	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "SleepSchedule")
 		os.Exit(1)
 	}

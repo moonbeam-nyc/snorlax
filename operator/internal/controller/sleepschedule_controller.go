@@ -21,9 +21,12 @@ import (
 	"encoding/json"
 	"fmt"
 	snorlaxv1beta1 "moonbeam-nyc/snorlax/api/v1beta1"
+	util "moonbeam-nyc/snorlax/internal/util"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/adhocore/gronx"
 
 	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
@@ -47,14 +50,23 @@ type key string
 type SleepScheduleReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	Clock  util.Clock
 }
 
 type SleepScheduleData struct {
-	Location  *time.Location
-	Now       time.Time
+	Timezone     *time.Location
+	DailyWindow  *DailyWindow
+	CronSchedule *CronSchedule
+}
+
+type DailyWindow struct {
 	WakeTime  time.Time
 	SleepTime time.Time
-	Timezone  *time.Location
+}
+
+type CronSchedule struct {
+	WakeSchedule  string
+	SleepSchedule string
 }
 
 const finalizer = "finalizer.snorlax.moonbeam.nyc"
@@ -71,42 +83,41 @@ const finalizer = "finalizer.snorlax.moonbeam.nyc"
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;watch;list;create;delete
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;watch;list
 
+// NewReconciler constructs a new SleepScheduleReconciler with required fields
+func NewReconciler(client client.Client, scheme *runtime.Scheme, clock util.Clock) *SleepScheduleReconciler {
+	if clock == nil {
+		clock = util.RealTime{}
+	}
+	return &SleepScheduleReconciler{
+		Client: client,
+		Scheme: scheme,
+		Clock:  clock,
+	}
+}
+
 func (r *SleepScheduleReconciler) ProcessSleepSchedule(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) (*SleepScheduleData, error) {
 	log := log.FromContext(ctx)
 	sleepScheduleData := &SleepScheduleData{}
 
-	// Load location
+	// Load the timezone
+	// NOTE: time.LoadLocation defaults to UTC if not specified
 	var err error
-	sleepScheduleData.Location, err = time.LoadLocation(sleepSchedule.Spec.Timezone)
+	sleepScheduleData.Timezone, err = time.LoadLocation(sleepSchedule.Spec.Timezone)
 	if err != nil {
 		log.Error(err, "failed to load timezone")
 		return nil, err
 	}
 
-	// Parse the wake time
-	sleepScheduleData.WakeTime, err = time.Parse("3:04pm", sleepSchedule.Spec.WakeTime)
-	if err != nil {
-		log.Error(err, "failed to parse wake time")
-		return nil, err
+	// Load the wake time(s) and sleep time(s)
+	if sleepSchedule.Spec.DailyWindow != nil {
+		err = r.loadDailyWindow(sleepSchedule.Spec.DailyWindow, sleepScheduleData)
+	} else if sleepSchedule.Spec.CronSchedule != nil {
+		err = r.loadCronSchedule(sleepSchedule.Spec.CronSchedule, sleepScheduleData)
 	}
 
-	// Parse the sleep time
-	sleepScheduleData.SleepTime, err = time.Parse("3:04pm", sleepSchedule.Spec.SleepTime)
 	if err != nil {
-		log.Error(err, "failed to parse sleep time")
+		log.Error(err, "failed to load wake and sleep times")
 		return nil, err
-	}
-
-	// Load the timezone
-	if sleepSchedule.Spec.Timezone != "" {
-		var err error
-		sleepScheduleData.Timezone, err = time.LoadLocation(sleepSchedule.Spec.Timezone)
-		if err != nil {
-			log.Error(err, "failed to load time zone")
-			return nil, err
-		}
-	} else {
-		sleepScheduleData.Timezone = time.UTC
 	}
 
 	return sleepScheduleData, nil
@@ -152,11 +163,6 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
-	// Load current time
-	now := time.Now().In(sleepScheduleData.Location)
-	wakeDatetime := time.Date(now.Year(), now.Month(), now.Day(), sleepScheduleData.WakeTime.Hour(), sleepScheduleData.WakeTime.Minute(), 0, 0, sleepScheduleData.Timezone)
-	sleepDatetime := time.Date(now.Year(), now.Month(), now.Day(), sleepScheduleData.SleepTime.Hour(), sleepScheduleData.SleepTime.Minute(), 0, 0, sleepScheduleData.Timezone)
-
 	// Determine if the app is awake
 	awake, err := r.isAppAwake(ctx, sleepSchedule)
 	if err != nil {
@@ -164,9 +170,10 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
-	// Update status based on the actual check
+	// Update status using patch to handle stale resource versions
+	original := sleepSchedule.DeepCopy()
 	sleepSchedule.Status.Awake = awake
-	err = r.Status().Update(ctx, sleepSchedule)
+	err = r.Status().Patch(ctx, sleepSchedule, client.MergeFrom(original))
 	if err != nil {
 		log.Error(err, "failed to update SleepSchedule status")
 		return ctrl.Result{}, err
@@ -197,11 +204,10 @@ func (r *SleepScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// Determine if the app should be awake or asleep
-	var shouldSleep bool
-	if wakeDatetime.Before(sleepDatetime) {
-		shouldSleep = now.Before(wakeDatetime) || now.After(sleepDatetime)
-	} else {
-		shouldSleep = now.After(sleepDatetime) && now.Before(wakeDatetime)
+	shouldSleep, err := r.shouldSleep(sleepScheduleData)
+	if err != nil {
+		log.Error(err, "Failed to determine sleep state")
+		return ctrl.Result{}, err
 	}
 
 	// Determine if the app was woken up by a request
@@ -360,6 +366,139 @@ func (r *SleepScheduleReconciler) isAppAwake(ctx context.Context, sleepSchedule 
 	}
 
 	return false, nil
+}
+
+func (r *SleepScheduleReconciler) loadDailyWindow(spec *snorlaxv1beta1.DailyWindow, data *SleepScheduleData) error {
+	data.DailyWindow = &DailyWindow{}
+
+	// Parse the wake time
+	wakeTime, err := time.Parse("3:04pm", spec.WakeTime)
+	if err != nil {
+		return fmt.Errorf("failed to parse wake time: %w", err)
+	}
+
+	// Parse the sleep time
+	sleepTime, err := time.Parse("3:04pm", spec.SleepTime)
+	if err != nil {
+		return fmt.Errorf("failed to parse sleep time: %w", err)
+	}
+
+	// Get current time in the timezone
+	now := r.Clock.Now(data.Timezone)
+
+	// Set the wake and sleep datetimes
+	data.DailyWindow.WakeTime = time.Date(now.Year(), now.Month(), now.Day(), wakeTime.Hour(), wakeTime.Minute(), 0, 0, data.Timezone)
+	data.DailyWindow.SleepTime = time.Date(now.Year(), now.Month(), now.Day(), sleepTime.Hour(), sleepTime.Minute(), 0, 0, data.Timezone)
+	return nil
+}
+
+func (r *SleepScheduleReconciler) loadCronSchedule(spec *snorlaxv1beta1.CronSchedule, data *SleepScheduleData) error {
+	data.CronSchedule = &CronSchedule{}
+	gron := gronx.New()
+
+	// Validate wake schedule cron format
+	if !gron.IsValid(spec.WakeSchedule) {
+		return fmt.Errorf("invalid cron wake schedule: %s", spec.WakeSchedule)
+	}
+
+	// Validate sleep schedule cron format
+	if !gron.IsValid(spec.SleepSchedule) {
+		return fmt.Errorf("invalid cron sleep schedule: %s", spec.SleepSchedule)
+	}
+
+	data.CronSchedule.WakeSchedule = spec.WakeSchedule
+	data.CronSchedule.SleepSchedule = spec.SleepSchedule
+	return nil
+}
+
+func findLastScheduledTime(cronExpr string, refTime time.Time) (time.Time, error) {
+	// Start looking from 7 days ago to handle weekly schedules
+	checkTime := refTime.AddDate(0, 0, -7)
+	var lastTime time.Time
+
+	for checkTime.Before(refTime) {
+		nextTime, err := gronx.NextTickAfter(cronExpr, checkTime, false)
+		if err != nil {
+			return time.Time{}, err
+		}
+
+		if nextTime.After(refTime) {
+			break
+		}
+
+		lastTime = nextTime
+		checkTime = nextTime.Add(time.Second)
+	}
+
+	return lastTime, nil
+}
+
+func (r *SleepScheduleReconciler) shouldSleep(data *SleepScheduleData) (bool, error) {
+	shouldSleep := false
+	var err error
+
+	// Check that either dailyWindow or cronSchedule is defined
+	if data.DailyWindow == nil && data.CronSchedule == nil {
+		err = fmt.Errorf("dailyWindow and cronSchedule not defined")
+		return shouldSleep, err
+	}
+
+	// Get the current time
+	now := r.Clock.Now(data.Timezone)
+
+	// Handle daily window case
+	if data.DailyWindow != nil {
+		wakeDatetime := data.DailyWindow.WakeTime
+		sleepDatetime := data.DailyWindow.SleepTime
+
+		if wakeDatetime.Before(sleepDatetime) {
+			shouldSleep = now.Before(wakeDatetime) || now.After(sleepDatetime)
+		} else {
+			shouldSleep = now.After(sleepDatetime) && now.Before(wakeDatetime)
+		}
+	} else if data.CronSchedule != nil {
+		// Find the most recent wake and sleep times before now
+		var lastWake, lastSleep time.Time
+		lastWake, err = findLastScheduledTime(data.CronSchedule.WakeSchedule, now)
+		if err != nil {
+			err = fmt.Errorf("failed to get last wake schedule time: %w", err)
+			return shouldSleep, err
+		}
+
+		lastSleep, err = findLastScheduledTime(data.CronSchedule.SleepSchedule, now)
+		if err != nil {
+			err = fmt.Errorf("failed to get last sleep schedule time: %w", err)
+			return shouldSleep, err
+		}
+
+		// Find the next wake and sleep times after now
+		var nextWake, nextSleep time.Time
+		nextWake, err = gronx.NextTickAfter(data.CronSchedule.WakeSchedule, now, false)
+		if err != nil {
+			err = fmt.Errorf("failed to get next wake schedule time: %w", err)
+			return shouldSleep, err
+		}
+
+		nextSleep, err = gronx.NextTickAfter(data.CronSchedule.SleepSchedule, now, false)
+		if err != nil {
+			err = fmt.Errorf("failed to get next sleep schedule time: %w", err)
+			return shouldSleep, err
+		}
+
+		// NOTE: If two times (sleep and wake) overlap, implicityly defaults to wake
+		// If we have no previous events, use only the next events
+		if lastWake.IsZero() && lastSleep.IsZero() {
+			shouldSleep = !nextWake.Before(nextSleep) // Sleep until first wake
+		} else if lastSleep.After(lastWake) && now.Before(nextWake) {
+			// If the last event was asleep and we haven't reached the next wake time
+			shouldSleep = true
+		} else if lastWake.After(lastSleep) && now.Before(nextSleep) {
+			// If the last event was a wake and we haven't reached the next sleep time
+			shouldSleep = false
+		}
+	}
+
+	return shouldSleep, err
 }
 
 func (r *SleepScheduleReconciler) wake(ctx context.Context, sleepSchedule *snorlaxv1beta1.SleepSchedule) error {

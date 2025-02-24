@@ -23,10 +23,7 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-type SleepScheduleSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
+type DailyWindow struct {
 	// The time that the deployment will wake up
 	// +kubebuilder:validation:Required
 	WakeTime string `json:"wakeTime"`
@@ -34,9 +31,32 @@ type SleepScheduleSpec struct {
 	// The time that the deployment will start sleeping
 	// +kubebuilder:validation:Required
 	SleepTime string `json:"sleepTime"`
+}
+
+type CronSchedule struct {
+	// The cron schedule for when the deployment should wake up
+	// +kubebuilder:validation:Required
+	WakeSchedule string `json:"wakeSchedule"`
+
+	// The cron schedule for when the deployment should go to sleep
+	// +kubebuilder:validation:Required
+	SleepSchedule string `json:"sleepSchedule"`
+}
+
+// SleepScheduleSpec defines optional and required fields for SleepSchedule
+// +kubebuilder:validation:XValidation:rule="has(self.dailyWindow) != has(self.cronSchedule)",message="exactly one of dailyWindow or cronSchedule must be specified"
+type SleepScheduleSpec struct {
+	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+	// Important: Run "make" to regenerate code after modifying this file
+
+	// The time that the deployment will wake up and start sleeping
+	DailyWindow *DailyWindow `json:"dailyWindow,omitempty"`
+
+	// The cron schedule that will be used to determine when the deployment will sleep/wake
+	CronSchedule *CronSchedule `json:"cronSchedule,omitempty"`
 
 	// The timezone that the input times are based in
-	// +kubebuilder:validation:Required
+	// +optional
 	Timezone string `json:"timezone"`
 
 	// The deployments that will be slept/woken.

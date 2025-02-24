@@ -10,8 +10,9 @@ metadata:
   namespace: default
   name: sleepschedule-sample
 spec:
-  wakeTime: 7am
-  sleepTime: 11pm
+  dailyWindow:
+    wakeTime: 7am
+    sleepTime: 11pm
   timezone: America/New_York
   deploymentName: dummy-deployment
   wakeReplicas: 3
